@@ -78,7 +78,7 @@ describe('the model probe with an explicit model', () => {
         async deleteSession() { }
         async getStatus() { return {}; }
     }
-    const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forStdio: () => ({}) } }, version: '1.0.16', from: 'test' };
+    const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forSpawnedStdio: () => ({}) } }, version: '2.0.3', from: 'test' };
     const deps = () => ({ env: { PATH: process.env.PATH }, platform: 'linux', loadSdk: async () => loaded, resolveBin: () => '/bin/copilot', userConfigDir: () => join(dir, 'no-user'), killTree: () => { throw new Error('unexpected tree kill'); } });
     it('reads that id\'s multiplier and the offered ids from listModels(), makes no session, and stops the runtime', async () => {
         FakeClient.calls = [];

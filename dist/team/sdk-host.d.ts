@@ -1,7 +1,7 @@
 /**
  * `omg team sdk-host`: the detached per-worker process behind `--transport sdk`.
  *
- * One host owns one `@github/copilot-sdk` client and one session for one team
+ * One host owns one `@microsoft/copilot-sdk` client and one session for one team
  * worker. It is the worker's launch "provider": it writes the launch-attempt
  * ack and the `provider_started` record with its own pid and strict process
  * start identity, so the existing provider liveness, retire and cleanup code

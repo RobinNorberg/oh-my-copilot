@@ -14563,8 +14563,8 @@ var init_copilot_sdk_scenarios = __esm({
     OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];

@@ -9,7 +9,7 @@
  *   itself when the smoke report says the binary is missing.
  * - Tier 1 spends one prompt (AI credits) and runs only with OMC_LIVE_SMOKE=1.
  * - Tier 2 static (SDK introspection, no model call) runs whenever the copilot
- *   binary and the optional `@github/copilot-sdk` resolve; it skips itself
+ *   binary and the optional `@microsoft/copilot-sdk` resolve; it skips itself
  *   otherwise. Tier 2 default scenarios (smoke, guardrail; ~0.6 AI credits)
  *   run only with OMC_LIVE_SMOKE=2.
  */
@@ -68,7 +68,7 @@ describe('copilot smoke (live)', () => {
   it('tier 2 static: SDK sees plugin, skills, agents and MCP tools (no model call)', async (ctx) => {
     const report = await runCopilotSmoke({ tier: 2, pluginRoot, scenarios: [] });
     if (report.skipped) {
-      ctx.skip(`copilot binary or @github/copilot-sdk not resolved: ${report.skipped}`);
+      ctx.skip(`copilot binary or @microsoft/copilot-sdk not resolved: ${report.skipped}`);
       return;
     }
     expect(report.tier).toBe(2);
@@ -80,7 +80,7 @@ describe('copilot smoke (live)', () => {
   it.runIf(liveTier2)('tier 2 scenarios: smoke + guardrail through the SDK (one prompt per scenario)', async (ctx) => {
     const report = await runCopilotSmoke({ tier: 2, pluginRoot });
     if (report.skipped) {
-      ctx.skip(`copilot binary or @github/copilot-sdk not resolved: ${report.skipped}`);
+      ctx.skip(`copilot binary or @microsoft/copilot-sdk not resolved: ${report.skipped}`);
       return;
     }
     expect(report.checks.map((c) => c.id)).toEqual(

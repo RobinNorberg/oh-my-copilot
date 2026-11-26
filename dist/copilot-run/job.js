@@ -16,7 +16,8 @@
  * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
  *   session without a confirmed sandbox gets no shell tool, a write session
  *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
- *   and a shell call the runtime reports as not sandboxed stops the session
+ *   and a shell call the runtime reports as not sandboxed, or a sandbox state
+ *   change that switches a confirmed sandbox off, stops the session
  *   (`sandbox-escaped`); every sandbox bypass request is rejected;
  * - the runtime env is an allowlist with the profile variables relocated to
  *   the job's home (allowlistSessionEnv);
@@ -55,8 +56,8 @@ import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { PROTECTED_PATHS, protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
-import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, } from '../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
+import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, spawnedClientOptions, } from '../smoke/copilot-sdk-driver.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
@@ -65,11 +66,11 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, copilotConfigDenies, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, copilotConfigDenies, isSandboxPolicyError, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
 import { dotnetSandboxEnv, sandboxNugetConfig } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
-import { errText, withTimeout } from './timeout.js';
+import { errText, TimeoutError, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -1341,9 +1342,9 @@ export class CopilotRunManager {
             return 'cancelled';
         // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
         let loadError;
-        const loaded = await deps.loadSdk().catch((err) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });
+        const loaded = await deps.loadSdk().catch((err) => { loadError = `loading ${SDK_PACKAGE} failed: ${errText(err)}`; return null; });
         if (!loaded) {
-            job.error = loadError ?? '@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)';
+            job.error = loadError ?? `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`;
             return 'failed';
         }
         const found = deps.resolveBin();
@@ -1561,6 +1562,15 @@ export class CopilotRunManager {
                 case 'tool.execution_start':
                     sandbox.toolStarted(data);
                     break;
+                case 'session.sandbox_state_changed': {
+                    // Tripwire: a confirmed sandbox switched off or opted out mid-session is an escape.
+                    const escaped = sandbox.stateChanged(data);
+                    if (escaped && !job.stopReason) {
+                        job.error = `${escaped}; the session was stopped`;
+                        job.requestStop('sandbox-escaped');
+                    }
+                    break;
+                }
                 case 'tool.execution_complete': {
                     // Attestation (sandbox-session.ts): an unsandboxed shell call stops the session unless detect-only.
                     const escaped = sandbox.toolCompleted(data);
@@ -1607,15 +1617,16 @@ export class CopilotRunManager {
                     break;
             }
         };
-        const { CopilotClient, RuntimeConnection } = loaded.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
         let client;
         try {
-            client = new CopilotClient({
-                connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(cap)], env }),
+            client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+                path: bin,
+                args: ['--max-ai-credits', String(cap)],
+                env,
                 baseDirectory: job.home,
                 workingDirectory: job.workCwd,
-            });
+            }));
         }
         catch (err) {
             releaseDirs();
@@ -1653,25 +1664,45 @@ export class CopilotRunManager {
             job.sandbox = sandbox.state;
             const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
             if (!job.stopReason && !refused()) {
-                const atCreate = sandbox.atCreate(loaded, sandboxConfig);
+                const atCreate = sandbox.atCreate(sandboxConfig);
                 // Review: the shell tools only while an enforced sandbox is still possible (confirmSandbox hides them on a downgrade).
-                const shell = sandboxConfig !== null;
-                session = await withTimeout(client.createSession({
-                    onPermissionRequest,
-                    onEvent,
-                    pluginDirectories: [sessionPluginRoot],
+                const create = (withSandbox, shell) => withTimeout(client.createSession({
+                    permissions: { onRequest: onPermissionRequest, ...(withSandbox ? { sandbox: sandboxConfig } : {}) },
+                    events: { onEvent },
+                    plugins: { directories: [sessionPluginRoot] },
                     workingDirectory: job.workCwd,
-                    disabledMcpServers: ['github-mcp-server'],
+                    mcp: { disabledServers: ['github-mcp-server'] },
                     // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-                    ...(gitHubToken ? { gitHubToken } : {}),
-                    excludedTools: buildSdkExcludedTools(MCP_SERVER),
-                    ...(job.profile === 'review' ? { availableTools: [...REVIEW_READ_TOOLS, ...(shell ? REVIEW_SHELL_TOOLS : [])] } : {}),
-                    ...(atCreate ? { sandboxConfig } : {}),
+                    ...(gitHubToken ? { github: { token: gitHubToken } } : {}),
+                    tools: {
+                        excludedTools: buildSdkExcludedTools(MCP_SERVER),
+                        ...(job.profile === 'review' ? { availableTools: [...REVIEW_READ_TOOLS, ...(shell ? REVIEW_SHELL_TOOLS : [])] } : {}),
+                    },
                     ...(job.model ? { model: job.model } : {}),
                 }), RPC_TIMEOUT_MS, 'createSession()');
-                job.sessionId = session.sessionId;
-                if (sandboxConfig)
-                    await sandbox.confirm(session, sandboxConfig, atCreate);
+                let created = true;
+                try {
+                    session = await create(atCreate, sandboxConfig !== null);
+                }
+                catch (err) {
+                    // A timeout may still create the session: never create a second one. Only the runtime refusing the
+                    // policy (SDK v2 applies it at create, so a policy conflict fails here) counts as an unconfirmed sandbox;
+                    // a network, auth or model error is an ordinary create failure (no sandbox gate, no second session).
+                    if (!atCreate || err instanceof TimeoutError || !isSandboxPolicyError(err))
+                        throw err;
+                    created = false;
+                    sandbox.createFailed(errText(err));
+                    job.sandbox = sandbox.state;
+                }
+                // Not confirmed at create: a review runs read-only without a shell and a detect-only write runs
+                // unsandboxed, each in a session created without the policy; a refused write creates none.
+                if (!created && job.sandbox?.mode !== 'refused' && !job.stopReason)
+                    session = await create(false, false);
+                if (session) {
+                    job.sessionId = session.sessionId;
+                    if (sandboxConfig && created)
+                        await sandbox.confirm(session, sandboxConfig, atCreate);
+                }
             }
             if (job.sandbox?.mode === 'refused') {
                 job.error = `sandbox-unavailable: ${job.sandbox.reason ?? 'the sandbox is not confirmed'}`;

@@ -48163,7 +48163,7 @@ function evaluateSandboxLane(run3) {
   const networkOk = enforced(write) && !!e2.probe && e2.localHits === 0 && outbound?.ok === false && local?.ok !== true;
   const reach = (r) => !r ? "not tried" : r.ok ? `REACHED (HTTP ${r.status ?? "?"})` : `blocked (${excerpt(r.error ?? "error", 80)})`;
   const enforcedLanes = e2.lanes.filter(enforced);
-  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0 && !l.sandbox?.stateEscaped);
   const commitOk = !!e2.commit?.ok && e2.commit.files.length === 1 && e2.commit.files[0] === SANDBOX_LANE_FILE;
   const realHome = target(e2.writeTargets, "real-home");
   const profile = target(e2.writeTargets, "profile");
@@ -48763,9 +48763,9 @@ var init_copilot_sdk_scenarios = __esm({
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    MIN_PROTOCOL_VERSION = 3;
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    MIN_PROTOCOL_VERSION = 4;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];
@@ -49475,7 +49475,9 @@ var init_sdk_policy = __esm({
       "write_agent",
       "read_agent",
       "list_agents",
-      "search_code_subagent"
+      "search_code_subagent",
+      "send_inbox",
+      "context_board"
     ];
   }
 });
@@ -50044,7 +50046,7 @@ async function applySandboxConfig(session, config2, timeoutMs) {
   const update = rpcMethod(session, ["rpc", "options"], "update");
   if (!update) return "the SDK has no options.update RPC";
   try {
-    const res = await withTimeout(update({ sandboxConfig: config2, sandboxConfigSource: "session_flag" }), timeoutMs, "options.update()");
+    const res = await withTimeout(update({ permissions: { sandbox: config2, sandboxSource: "session_flag" } }), timeoutMs, "options.update()");
     return res?.success === true ? null : "options.update did not report success";
   } catch (err) {
     return `options.update failed: ${errText(err)}`;
@@ -50063,6 +50065,113 @@ async function readEnforcement(session, timeoutMs) {
   } catch (err) {
     return `sandbox.getEnforcementStatus failed: ${errText(err)}`;
   }
+}
+function configWeakerThanSent(eff, sent, platform) {
+  const s = sent;
+  for (const k of ["addCurrentWorkingDirectory", "allowTempStorage", "allowDevToolAccess"]) {
+    if (s[k] === false && eff[k] !== false) return `${k} is ${String(eff[k])}, the policy sent false`;
+  }
+  for (const k of ["sandboxMcpServers", "sandboxLspServers", "sandboxExtensions"]) {
+    if (eff[k] === false && s[k] !== false) return `${k} is false, the policy did not opt out`;
+    if (eff[k] !== void 0 && typeof eff[k] !== "boolean") return `${k} is not a boolean`;
+  }
+  const effAuth = eff.auth === void 0 ? {} : asObj(eff.auth);
+  if (!effAuth) return "auth is not an object";
+  const sentAuth = asObj(s.auth) ?? {};
+  for (const k of ["git", "gh"]) {
+    if (effAuth[k] !== void 0 && effAuth[k] !== false && sentAuth[k] !== true) return `auth.${k} is ${String(effAuth[k])}, the policy did not grant it`;
+  }
+  const effPolicy = eff.userPolicy === void 0 ? {} : asObj(eff.userPolicy);
+  if (!effPolicy) return "userPolicy is not an object";
+  const sentPolicy = asObj(s.userPolicy) ?? {};
+  const sub = (o, k) => o[k] === void 0 ? {} : asObj(o[k]);
+  const effFs = sub(effPolicy, "filesystem"), effNet = sub(effPolicy, "network"), effSeat = sub(effPolicy, "seatbelt");
+  if (!effFs || !effNet || !effSeat) return "userPolicy.filesystem, network or seatbelt is not an object";
+  const sentFs = sub(sentPolicy, "filesystem") ?? {}, sentNet = sub(sentPolicy, "network") ?? {}, sentSeat = sub(sentPolicy, "seatbelt") ?? {};
+  if (effSeat.keychainAccess !== void 0 && effSeat.keychainAccess !== false && sentSeat.keychainAccess !== true) return `userPolicy.seatbelt.keychainAccess is ${String(effSeat.keychainAccess)}, the policy did not grant it`;
+  const mach = strList(effSeat.extraMachLookups);
+  if (!mach) return "userPolicy.seatbelt.extraMachLookups is not a string list";
+  const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
+  const extraMach = mach.find((m) => !sentMach.has(m));
+  if (extraMach !== void 0) return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+  const effExpSeat = asObj(asObj(effPolicy.experimental)?.seatbelt);
+  const sentExpSeat = asObj(asObj(sentPolicy.experimental)?.seatbelt);
+  if (effExpSeat?.keychainAccess === true && sentExpSeat?.keychainAccess !== true) return "userPolicy.experimental.seatbelt.keychainAccess is true, the policy did not grant it";
+  if (effNet.proxy !== void 0 && effNet.proxy !== null && (sentNet.proxy === void 0 || sentNet.proxy === null)) return "userPolicy.network.proxy is set, the policy sent none";
+  for (const k of ["allowOutbound", "allowLocalNetwork"]) {
+    if (effNet[k] !== void 0 && effNet[k] !== false && sentNet[k] !== true) return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
+  }
+  const host = (h) => h.trim().toLowerCase();
+  const effAllowed = strList(effNet.allowedHosts);
+  if (!effAllowed) return "userPolicy.network.allowedHosts is not a string list";
+  const sentAllowed = new Set((strList(sentNet.allowedHosts) ?? []).map(host));
+  if (sentAllowed.size > 0) {
+    if (effAllowed.length === 0) return "userPolicy.network.allowedHosts is empty (any host), the policy restricted the hosts";
+    const extra = effAllowed.find((h) => !sentAllowed.has(host(h)) && !(sentNet.allowLocalNetwork === true && LOOPBACK_HOSTS.has(host(h))));
+    if (extra !== void 0) return `userPolicy.network.allowedHosts allows ${extra}, the policy did not`;
+  }
+  const effBlocked = strList(effNet.blockedHosts);
+  if (!effBlocked) return "userPolicy.network.blockedHosts is not a string list";
+  const blocked = new Set(effBlocked.map(host));
+  const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked.has(host(h)));
+  if (unblocked !== void 0) return `userPolicy.network.blockedHosts lost ${unblocked}`;
+  const norm2 = (p) => {
+    let n = (/^[\\/]{2}/.test(p) ? "/" : "") + p.replace(/[\\/]+/g, "/");
+    while (n.length > 1 && n.endsWith("/") && !/^[A-Za-z]:\/$/.test(n)) n = n.slice(0, -1);
+    return platform === "win32" ? n.toLowerCase() : n;
+  };
+  const set2 = (k) => new Set((strList(sentFs[k]) ?? []).map(norm2));
+  const sentRw = set2("readwritePaths");
+  const sentReadable = /* @__PURE__ */ new Set([...sentRw, ...set2("readonlyPaths")]);
+  const checks = [["readwritePaths", sentRw], ["readonlyPaths", sentReadable], ["enumeratePaths", sentReadable]];
+  for (const [k, allowed] of checks) {
+    const list = strList(effFs[k]);
+    if (!list) return `userPolicy.filesystem.${k} is not a string list`;
+    const extra = list.find((p) => !allowed.has(norm2(p)));
+    if (extra !== void 0) return `userPolicy.filesystem.${k} grants ${extra}, the policy did not`;
+  }
+  const effDenied = strList(effFs.deniedPaths);
+  if (!effDenied) return "userPolicy.filesystem.deniedPaths is not a string list";
+  const denied = new Set(effDenied.map(norm2));
+  const lost = (strList(sentFs.deniedPaths) ?? []).find((p) => !denied.has(norm2(p)));
+  if (lost !== void 0) return `userPolicy.filesystem.deniedPaths lost ${lost}`;
+  return null;
+}
+function sandboxStateProblem(state, sent, platform = process.platform) {
+  if (!state || typeof state !== "object") return "no sandbox state";
+  const s = state;
+  const config2 = asObj(s.config);
+  if (!config2) return "the sandbox state has no effective config";
+  if (config2.enabled !== true) return `the effective sandbox config is not enabled (enabled: ${String(config2.enabled)})`;
+  if (config2.allowBypass === true) return "the effective sandbox config allows bypass requests";
+  if (s.disabledForSession !== false) return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+  if (s.autoApproveBypass !== false) return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+  const weaker = configWeakerThanSent(config2, sent, platform);
+  if (weaker) return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
+  return null;
+}
+async function readSandboxState(session, timeoutMs, sent, platform = process.platform) {
+  const call = rpcMethod(session, ["rpc", "sandbox"], "getState");
+  if (!call) return "the SDK has no sandbox.getState RPC";
+  try {
+    const res = await withTimeout(call(), timeoutMs, "sandbox.getState()");
+    const problem = sandboxStateProblem(res, sent, platform);
+    if (problem) return `sandbox.getState: ${problem}`;
+    const source = res.configSource;
+    return { configSource: typeof source === "string" ? source : "unknown" };
+  } catch (err) {
+    return `sandbox.getState failed: ${errText(err)}`;
+  }
+}
+function isSandboxPolicyError(err) {
+  const e2 = err;
+  let data = "";
+  try {
+    data = e2?.data === void 0 ? "" : JSON.stringify(e2.data);
+  } catch {
+  }
+  const text3 = [errText(err), typeof e2?.code === "string" ? e2.code : "", data].join("\n");
+  return /violates managed policy|invalid parameter 'sandboxConfig'|sandbox policy could not be resolved|managed_sandbox_policy_conflict/i.test(text3);
 }
 function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
@@ -50185,7 +50294,7 @@ function sandboxPath(value, platform = process.platform) {
     return P.isAbsolute(entry);
   }).join(P.delimiter);
 }
-var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, asObj, strList, LOOPBACK_HOSTS, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -50228,6 +50337,9 @@ var init_sandbox2 = __esm({
       const r = (0, import_node_child_process2.spawnSync)(cmd, args, { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
       return { ...r.error ? { error: r.error } : {}, status: r.status, stderr: r.stderr ?? "", stdout: r.stdout ?? "" };
     };
+    asObj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+    strList = (v) => v === void 0 ? [] : Array.isArray(v) && v.every((x) => typeof x === "string") ? v : null;
+    LOOPBACK_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "::1"]);
     SESSION_ENV_ALLOWLIST = [
       // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
       "PATH",
@@ -50413,6 +50525,9 @@ function withSseData(block2, value) {
   return lines3.flatMap((l, i) => !l.startsWith("data:") ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : []).join("\n");
 }
 function deltaStreams(events) {
+  return [...deltaStreamMap(events).values()];
+}
+function deltaStreamMap(events) {
   const streams = /* @__PURE__ */ new Map();
   const add = (key, event, holder, field) => {
     if (typeof holder[field] !== "string") return;
@@ -50440,16 +50555,30 @@ function deltaStreams(events) {
     if (typeof value.type === "string" && value.type.endsWith(".delta")) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(":"), event, value, "delta");
     }
+    if (value.type === "tool.shell_output" && isRecord3(value.data)) {
+      const data = value.data;
+      add(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === "string" ? data.stream : "stdout"}`, event, data, "text");
+      return;
+    }
     if (typeof value.type === "string" && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord3(value.data)) {
       const data = value.data;
       const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(":");
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 function reassembledDeltas(events) {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  const calls = /* @__PURE__ */ new Map();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...calls.get(call) ?? [], slots]);
+  }
+  const crossStream = [...calls.values()].filter((perStream) => perStream.length > 1).map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 function wsData(messages) {
   return messages.map((m) => parseJson(m.data));
@@ -50544,7 +50673,7 @@ function scanForSecrets(text3, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, SHELL_OUTPUT_KEY, shellSequence, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -50642,6 +50771,8 @@ var init_redact = __esm({
     PLAIN_KEY_ENV = /^SSH_AUTH_SOCK$|PUBLIC_KEY$/i;
     isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
+    SHELL_OUTPUT_KEY = "tool.shell_output";
+    shellSequence = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -51787,7 +51918,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
+      super({ ...opts, models: { ...opts.models, requestHandler }, ...mode === "replay" ? { github: { useLoggedInUser: false } } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -51820,7 +51951,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         this.createSession = async (session) => {
           if (!session.model) throw new CassetteConfigError("replay needs a pinned model (--model)");
           const rest = { ...session };
-          delete rest.gitHubToken;
+          delete rest.github;
           return create(rest);
         };
       }
@@ -51834,7 +51965,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
   }
   const Connection = loaded2.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection), {
-    forStdio: (opts) => Connection.forStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
+    forSpawnedStdio: (opts) => Connection.forSpawnedStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
   });
   return {
     ...loaded2,
@@ -51855,7 +51986,7 @@ var init_handler = __esm({
     init_matcher();
     init_normalize();
     init_redact();
-    REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
+    REQUEST_HANDLER_MISSING = "replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
     RECORD_STARTED_SUFFIX = ".started";
@@ -52180,17 +52311,13 @@ var init_run = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
-function sdkCreateSessionAcceptsSandbox(loaded2) {
-  try {
-    const fn = loaded2.module.CopilotClient.prototype?.createSession;
-    return typeof fn === "function" && /\bsandboxConfig\b/.test(Function.prototype.toString.call(fn));
-  } catch {
-    return false;
-  }
+function spawnedClientOptions(loaded2, conn, extra = {}) {
+  if (typeof conn.path !== "string" || conn.path.trim() === "") throw new Error("the Copilot CLI path for the SDK connection is empty");
+  return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 function isSdkModule(mod) {
   const m = mod;
-  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
+  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forSpawnedStdio === "function";
 }
 function readPkg(dir) {
   try {
@@ -52300,9 +52427,14 @@ async function loadCopilotSdk(env2 = process.env, spawnSync16 = import_child_pro
 }
 async function findCopilotSdk(env2, spawnSync16) {
   const spec = SDK_PACKAGE;
+  let outOfRange = null;
   try {
     const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+    if (isSdkModule(mod)) {
+      const version2 = nodeResolvedVersion();
+      if (satisfiesSdkRange(version2)) return { module: mod, version: version2, from: "node resolution" };
+      outOfRange = version2 ?? "an unknown version";
+    }
   } catch {
   }
   const tried = /* @__PURE__ */ new Set();
@@ -52318,10 +52450,12 @@ async function findCopilotSdk(env2, spawnSync16) {
     }
   };
   for (const root of globalModuleRoots(env2)) {
-    const hit = await tryRoot(root);
-    if (hit) return hit;
+    const hit2 = await tryRoot(root);
+    if (hit2) return hit2;
   }
-  return tryRoot(npmRootG(env2, spawnSync16));
+  const hit = await tryRoot(npmRootG(env2, spawnSync16));
+  if (!hit && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit;
 }
 function withTimeout2(promise2, ms, label) {
   let timer;
@@ -52370,8 +52504,7 @@ function rethrowSdkStartError(err) {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
-  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} (${SDK_INSTALL_COMMAND}) when a version supporting protocol ${m.server} is available.` : `The Copilot CLI is too old for SDK v2: update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}, or \`copilot update\` for a WinGet/Homebrew install).`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
     { cause: err }
@@ -52517,18 +52650,15 @@ async function runSdkTier(input2) {
     bin = target;
   }
   const projectError = prepareSdkProject(input2.spawnSync, input2.projectDir, input2.remoteDir, input2.env);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
     // Debug level for the runtime (hook stderr is only logged there) via args,
-    // not the client's logLevel, which would also echo SDK timing lines to our stderr.
-    connection: RuntimeConnection.forStdio({
-      path: bin,
-      args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
-      env: input2.env
-    }),
+    // not the client's observability.logLevel, which would also echo SDK timing lines to our stderr.
+    path: bin,
+    args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
+    env: input2.env,
     baseDirectory: input2.home,
     workingDirectory: input2.projectDir
-  });
+  }));
   const logDir = (0, import_path68.join)(input2.home, "logs");
   const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
   const total = { premiumRequests: 0, credits: 0 };
@@ -52618,8 +52748,8 @@ async function runSdkTier(input2) {
         budget: input2.maxCredits - total.credits,
         eventsPath: path15,
         spawnSync: input2.spawnSync,
-        // A cassette is recorded on, and replayed with, one pinned model.
-        ...tape && choice.model ? { model: choice.model } : {}
+        // The workers run on the session's model choice (--model, a cassette's pinned model, else the cheap pick), not runtime auto.
+        ...choice.model ? { model: choice.model } : {}
       }) : isCliScenario(name) ? await input2.runCli({
         name,
         bin,
@@ -52735,11 +52865,11 @@ async function staticChecks(client, input2, loaded2, bin) {
   try {
     try {
       session = await withTimeout2(client.createSession({
-        onPermissionRequest: () => reject("omg smoke: static checks grant nothing"),
-        pluginDirectories: [input2.root],
+        permissions: { onRequest: () => reject("omg smoke: static checks grant nothing") },
+        plugins: { directories: [input2.root] },
         workingDirectory: input2.projectDir,
-        disabledMcpServers: ["github-mcp-server"],
-        excludedTools: [hostSmokeToolName(input2.mcpServer)],
+        mcp: { disabledServers: ["github-mcp-server"] },
+        tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -52830,25 +52960,26 @@ async function sandboxSpawnCanary(loaded2, bin, input2, host) {
   (0, import_fs55.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
   (0, import_fs55.mkdirSync)((0, import_path68.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
   (0, import_fs55.mkdirSync)(env2.TEMP, { recursive: true });
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: jobHome,
     workingDirectory: input2.projectDir
-  });
+  }));
   let session;
   const sandboxed = /* @__PURE__ */ new Map();
   try {
     await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "canary client.start()");
     session = await withTimeout2(client.createSession({
-      onPermissionRequest: () => reject("omg smoke: the spawn canary grants nothing"),
-      onEvent: (e2) => {
+      permissions: { onRequest: () => reject("omg smoke: the spawn canary grants nothing") },
+      events: { onEvent: (e2) => {
         if (e2.type === "tool.execution_complete") sandboxed.set(String(e2.data?.toolCallId ?? ""), e2.data?.sandboxed);
-      },
-      pluginDirectories: [],
+      } },
+      plugins: { directories: [] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
       ...loaded2.cassette && input2.model ? { model: input2.model } : {}
     }), RPC_TIMEOUT_MS, "canary createSession()");
     const shell = session.rpc.shell;
@@ -52965,21 +53096,23 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
   try {
     if (name === "filetools") probe = prepareFiletools(input2.projectDir, input2.home);
     session = await withTimeout2(client.createSession({
-      onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
-      onEvent: (event) => {
-        recorded.push(event);
-        if (event.type === "session.idle" && sent) onIdle();
-        if (event.type === "session.shutdown") onShutdown();
-        spent += usageCredits(event);
-        if (!capped3 && spent > budget) {
-          capped3 = true;
-          onCap();
+      permissions: { onRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`) },
+      events: {
+        onEvent: (event) => {
+          recorded.push(event);
+          if (event.type === "session.idle" && sent) onIdle();
+          if (event.type === "session.shutdown") onShutdown();
+          spent += usageCredits(event);
+          if (!capped3 && spent > budget) {
+            capped3 = true;
+            onCap();
+          }
         }
       },
-      pluginDirectories: probe ? [input2.root, probe.probeDir] : [input2.root],
+      plugins: { directories: probe ? [input2.root, probe.probeDir] : [input2.root] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: scenarioExcludedTools(name, input2.mcpServer),
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -53038,7 +53171,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     wedged
   };
 }
-var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, LAST_PROTOCOL3_CLI, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, MIN_COPILOT_CLI, LEGACY_SDK_PACKAGE, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, COPILOT_UPDATE_COMMAND, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -53057,7 +53190,9 @@ var init_copilot_sdk_driver = __esm({
     init_windows_search();
     init_handler();
     init_run();
-    SDK_MIN_VERSION = "1.0.16";
+    SDK_MIN_VERSION = "2.0.3";
+    MIN_COPILOT_CLI = "1.0.116";
+    LEGACY_SDK_PACKAGE = "@github/copilot-sdk";
     DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
     START_TIMEOUT_MS = 6e4;
     RPC_TIMEOUT_MS = 3e4;
@@ -53070,7 +53205,7 @@ var init_copilot_sdk_driver = __esm({
     sleep4 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    LAST_PROTOCOL3_CLI = "1.0.112";
+    COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
   }
@@ -63197,15 +63332,17 @@ function withTimeout3(promise2, ms, label) {
   return Promise.race([
     promise2,
     new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
+      timer = setTimeout(() => reject2(new TimeoutError2(`${label} timed out after ${ms} ms`)), ms);
     })
   ]).finally(() => clearTimeout(timer));
 }
-var errText4;
+var errText4, TimeoutError2;
 var init_timeout = __esm({
   "src/copilot-run/timeout.ts"() {
     "use strict";
     errText4 = (err) => err instanceof Error ? err.message : String(err);
+    TimeoutError2 = class extends Error {
+    };
   }
 });
 
@@ -63217,7 +63354,6 @@ var SessionSandboxController;
 var init_sandbox_session = __esm({
   "src/copilot-run/sandbox-session.ts"() {
     "use strict";
-    init_copilot_sdk_driver();
     init_timeout();
     init_sandbox2();
     SessionSandboxController = class {
@@ -63226,10 +63362,18 @@ var init_sandbox_session = __esm({
       }
       /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
       state = null;
+      /** The `sandbox-escaped:` error once a `session.sandbox_state_changed` event showed the policy no longer in force. */
+      stateEscape = null;
       toolNames = /* @__PURE__ */ new Map();
-      /** Whether createSession takes `config` (else confirm applies it via options.update). */
-      atCreate(loaded2, config2) {
-        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      /** The policy confirm sent: the tripwire compares every later state with it. */
+      sent = null;
+      /**
+       * Whether createSession takes `config`: always when there is one, since SDK v2
+       * forwards `permissions.sandbox` at create (v1 1.0.16 did not). confirm still
+       * demands affirmative evidence after create: a runtime drops an unknown create field silently.
+       */
+      atCreate(config2) {
+        return config2 !== null;
       }
       /**
        * Probe the host and set `state` (§5). Returns the config to apply when
@@ -63277,13 +63421,29 @@ var init_sandbox_session = __esm({
           return null;
         }
       }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      /**
+       * Demand affirmative evidence that `config` is in force; downgrade to the
+       * fail-closed mode on any doubt. The runtime drops a create-time field it
+       * does not know without an error, and getEnforcementStatus reports
+       * `{ required: false, blocked: false }` for a session with no sandbox at
+       * all, so neither proves anything alone: the same policy is (re)sent through
+       * options.update, which must report success (identical to the create-time
+       * policy it is idempotent and restarts no MCP server, SDK v2 types.d.ts
+       * SessionPermissionOptions.sandbox), then sandbox.getState must show it in
+       * force ({@link sandboxStateProblem}), then enforcement must not be blocked.
+       */
       async confirm(session, config2, atCreate) {
         const { opts } = this;
         const sbx = this.state;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        this.sent = config2;
+        let why = await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
         if (!why) {
           sbx.applied = atCreate ? "create" : "options.update";
+          const state = await readSandboxState(session, opts.rpcTimeoutMs, config2, opts.platform);
+          if (typeof state === "string") why = state;
+          else sbx.configSource = state.configSource;
+        }
+        if (!why) {
           const enf = await readEnforcement(session, opts.rpcTimeoutMs);
           if (typeof enf === "string") why = enf;
           else {
@@ -63296,16 +63456,50 @@ var init_sandbox_session = __esm({
           delete sbx.reason;
           return;
         }
-        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        this.unconfirmed(why);
         if (sbx.mode === "read-only-no-shell") {
-          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
           try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+            await withTimeout3(session.rpc.options?.update?.({ tools: { availableTools: [...REVIEW_READ_TOOLS] } }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
           } catch {
           }
         }
+      }
+      /**
+       * createSession with the policy (`permissions.sandbox`) failed with a sandbox
+       * policy error (`isSandboxPolicyError` in sandbox.ts; the caller throws any other
+       * error as an ordinary create failure): SDK v2 applies the policy at create,
+       * so a policy conflict fails the create itself. Sets the fail-closed mode with the
+       * reason, as confirm does: `refused` creates no session, while a review
+       * (`read-only-no-shell`) or `detect-only` write session is created again
+       * without the policy (the caller's createSession, without the shell tools for a review).
+       */
+      createFailed(why) {
+        this.unconfirmed(`createSession with the sandbox policy failed: ${why}`);
+      }
+      unconfirmed(why) {
+        const { opts } = this;
+        const sbx = this.state;
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+      }
+      /**
+       * `session.sandbox_state_changed` data: a tripwire once the sandbox is
+       * confirmed. In an enforced session a state that no longer shows the policy
+       * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses, a
+       * config weaker than the policy confirm sent) is an escape: returns the
+       * `sandbox-escaped:` error (also kept in `stateEscape` and in the record's
+       * `stateEscaped`, which the factory parks on), else null. Before confirm (create-time transitions) and in
+       * any other mode it returns null; confirm reads the state itself.
+       */
+      stateChanged(data) {
+        if (this.state?.mode !== "enforced" || this.stateEscape || !this.sent) return null;
+        const problem = sandboxStateProblem(data, this.sent, this.opts.platform);
+        if (!problem) return null;
+        this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+        this.state.stateEscaped = this.stateEscape;
+        return this.stateEscape;
       }
       /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
       toolStarted(data) {
@@ -64323,11 +64517,11 @@ var init_job = __esm({
         if (early === "cancelled") return "cancelled";
         let loadError;
         const loaded2 = await deps.loadSdk().catch((err) => {
-          loadError = `loading @github/copilot-sdk failed: ${errText4(err)}`;
+          loadError = `loading ${SDK_PACKAGE} failed: ${errText4(err)}`;
           return null;
         });
         if (!loaded2) {
-          job.error = loadError ?? "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
+          job.error = loadError ?? `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`;
           return "failed";
         }
         const found = deps.resolveBin();
@@ -64514,6 +64708,14 @@ var init_job = __esm({
             case "tool.execution_start":
               sandbox.toolStarted(data);
               break;
+            case "session.sandbox_state_changed": {
+              const escaped = sandbox.stateChanged(data);
+              if (escaped && !job.stopReason) {
+                job.error = `${escaped}; the session was stopped`;
+                job.requestStop("sandbox-escaped");
+              }
+              break;
+            }
             case "tool.execution_complete": {
               const escaped = sandbox.toolCompleted(data);
               if (escaped && !job.stopReason) {
@@ -64552,15 +64754,16 @@ var init_job = __esm({
               break;
           }
         };
-        const { CopilotClient, RuntimeConnection } = loaded2.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
         let client;
         try {
-          client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env: env2 }),
+          client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+            path: bin,
+            args: ["--max-ai-credits", String(cap)],
+            env: env2,
             baseDirectory: job.home,
             workingDirectory: job.workCwd
-          });
+          }));
         } catch (err) {
           releaseDirs();
           job.error = `runtime client: ${errText4(err)}`;
@@ -64591,23 +64794,35 @@ var init_job = __esm({
           job.sandbox = sandbox.state;
           const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused()) {
-            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
-            const shell = sandboxConfig !== null;
-            session = await withTimeout3(client.createSession({
-              onPermissionRequest,
-              onEvent,
-              pluginDirectories: [sessionPluginRoot],
+            const atCreate = sandbox.atCreate(sandboxConfig);
+            const create = (withSandbox, shell) => withTimeout3(client.createSession({
+              permissions: { onRequest: onPermissionRequest, ...withSandbox ? { sandbox: sandboxConfig } : {} },
+              events: { onEvent },
+              plugins: { directories: [sessionPluginRoot] },
               workingDirectory: job.workCwd,
-              disabledMcpServers: ["github-mcp-server"],
+              mcp: { disabledServers: ["github-mcp-server"] },
               // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-              ...gitHubToken ? { gitHubToken } : {},
-              excludedTools: buildSdkExcludedTools(MCP_SERVER),
-              ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {},
-              ...atCreate ? { sandboxConfig } : {},
+              ...gitHubToken ? { github: { token: gitHubToken } } : {},
+              tools: {
+                excludedTools: buildSdkExcludedTools(MCP_SERVER),
+                ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {}
+              },
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
-            job.sessionId = session.sessionId;
-            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
+            let created = true;
+            try {
+              session = await create(atCreate, sandboxConfig !== null);
+            } catch (err) {
+              if (!atCreate || err instanceof TimeoutError2 || !isSandboxPolicyError(err)) throw err;
+              created = false;
+              sandbox.createFailed(errText4(err));
+              job.sandbox = sandbox.state;
+            }
+            if (!created && job.sandbox?.mode !== "refused" && !job.stopReason) session = await create(false, false);
+            if (session) {
+              job.sessionId = session.sessionId;
+              if (sandboxConfig && created) await sandbox.confirm(session, sandboxConfig, atCreate);
+            }
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
@@ -66310,7 +66525,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.stateEscaped === void 0 || isStr2(sbx.stateEscaped)) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -67629,7 +67844,7 @@ async function runSandboxed(argv, o, deps) {
   try {
     (0, import_node_fs17.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+    if (!loaded2) return notStarted(`${SDK_PACKAGE} is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
@@ -67659,12 +67874,13 @@ async function runSandboxed(argv, o, deps) {
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+      path: bin,
+      args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+      env: env2,
       baseDirectory: jobHome,
       workingDirectory: workDir
-    });
+    }));
     client = c;
     await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
@@ -67713,24 +67929,26 @@ async function runSandboxed(argv, o, deps) {
     }
     const attested = /* @__PURE__ */ new Map();
     const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
+    const atCreate = sandbox.atCreate(config2);
     session = await withTimeout3(c.createSession({
-      onPermissionRequest,
-      onEvent: (e2) => {
-        const data = e2.data ?? {};
-        if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e2.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
+      permissions: { onRequest: onPermissionRequest, ...atCreate ? { sandbox: config2 } : {} },
+      events: {
+        onEvent: (e2) => {
+          const data = e2.data ?? {};
+          if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
+          if (e2.type === "session.sandbox_state_changed") sandbox.stateChanged(data);
+          if (e2.type === "tool.execution_complete") {
+            attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+            sandbox.toolCompleted(data);
+          }
         }
       },
       // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
+      plugins: { directories: [] },
       workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
+      ...gitHubToken ? { github: { token: gitHubToken } } : {}
     }), RPC_TIMEOUT_MS3, "createSession()");
     await sandbox.confirm(session, config2, atCreate);
     if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
@@ -67761,6 +67979,7 @@ async function runSandboxed(argv, o, deps) {
     const r = answer !== "timeout" && "value" in answer ? answer.value : null;
     const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
     for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep9(100);
+    if (sandbox.stateEscape) return noVerdict(`${sandbox.stateEscape}; nothing is counted`);
     const escapes = sandbox.state?.unsandboxedCalls ?? 0;
     if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
     if (!id || attested.get(id) !== true) {
@@ -78109,11 +78328,11 @@ function sandboxPark(result) {
   const s = result.sandbox;
   if (!s) return null;
   if (s.mode === "refused") return { name: "sandbox-unavailable", reason: result.error ?? s.reason ?? "the sandbox is not confirmed" };
-  if (s.unsandboxedCalls > 0 && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+  if ((s.unsandboxedCalls > 0 || s.stateEscaped) && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? s.stateEscaped ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
   return null;
 }
 function laneSandboxEnforced(s) {
-  return !!s && s.unsandboxedCalls === 0 && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
+  return !!s && s.unsandboxedCalls === 0 && !s.stateEscaped && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
 }
 function shipFollower(phase) {
   if (phase === "gates") return "gates";
@@ -85028,11 +85247,12 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
        * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
        * lane (no local session), review lanes (no network: read tools, or an
        * enforced sandbox without outbound access) and the local forge do not
-       * count. '' = nothing to say; null = parked; else the merge note's clause.
+       * count, except a review lane that recorded a sandbox escape or an
+       * unsandboxed call. '' = nothing to say; null = parked; else the merge note's clause.
        */
       unsandboxedLanes(head, gone2) {
         if (this.forge?.kind === "local") return "";
-        const loose = this.state.lanes.filter((l) => l.kind !== "review" && l.kind !== "coding-agent" && (l.sandbox?.mode !== "enforced" || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
+        const loose = this.state.lanes.filter((l) => l.kind !== "coding-agent" && !(l.kind === "review" && !l.sandbox?.stateEscaped && (l.sandbox?.unsandboxedCalls ?? 0) === 0) && (l.sandbox?.mode !== "enforced" || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
         if (loose.length === 0) return "";
         const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
         if (this.state.unsandboxedAck === head && !gone2) return accepted;
@@ -85320,7 +85540,7 @@ var init_cli2 = __esm({
 });
 
 // src/factory/host-check.ts
-var COPILOT_INSTALL_COMMAND;
+var SDK_MIGRATE_COMMAND;
 var init_host_check = __esm({
   "src/factory/host-check.ts"() {
     "use strict";
@@ -85334,7 +85554,7 @@ var init_host_check = __esm({
     init_copilot_session_env();
     init_config_dir();
     init_tmux_utils();
-    COPILOT_INSTALL_COMMAND = `npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}`;
+    SDK_MIGRATE_COMMAND = `npm uninstall -g ${LEGACY_SDK_PACKAGE} && ${SDK_INSTALL_COMMAND}`;
   }
 });
 
@@ -89075,9 +89295,12 @@ function withSandboxCanary(loaded2, probe) {
         let probing = false;
         const session = await create({
           ...config2,
-          onPermissionRequest: (req, ctx) => {
-            if (probing) probe.permissionRequests += 1;
-            return config2.onPermissionRequest(req, ctx);
+          permissions: {
+            ...config2.permissions,
+            onRequest: (req, ctx) => {
+              if (probing) probe.permissionRequests += 1;
+              return config2.permissions.onRequest(req, ctx);
+            }
           }
         });
         const send = session.send.bind(session);
@@ -89130,13 +89353,14 @@ async function probeSandboxHost(input2, cwd) {
   } catch (err) {
     return unsupported(`loading the SDK failed: ${errText7(err)}`);
   }
-  if (!loaded2) return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: input2.bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  if (!loaded2) return unsupported(`the ${SDK_PACKAGE} package is not installed (${SDK_INSTALL_COMMAND})`);
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: input2.bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: input2.home,
     workingDirectory: cwd
-  });
+  }));
   try {
     await withTimeout4(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
@@ -89238,7 +89462,7 @@ function record2(role, result, events) {
     role,
     state: result?.state ?? "not started",
     error: result?.error ?? null,
-    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.reason ? { reason: s.reason } : {} } : null,
+    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.stateEscaped ? { stateEscaped: s.stateEscaped } : {}, ...s.reason ? { reason: s.reason } : {} } : null,
     shellCalls: att.calls,
     unattestedShellCalls: att.unattested,
     okShellCalls: att.ok,
@@ -90464,7 +90688,7 @@ var init_host_smoke_tool = __esm({
     OPT_IN_SCENARIO_NAMES = ["filetools", "chain", "team", "factory-run", "factory-run-fix", "sandbox-lane", "continuation", "prompt-context", "events", "ultragoal"];
     hostSmokeSchema = {
       tier: external_exports.number().int().min(0).max(2).optional().describe(
-        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
+        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @microsoft/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
       ),
       scenarios: external_exports.array(external_exports.enum([...SCENARIO_NAMES, ...OPT_IN_SCENARIO_NAMES, "all"])).optional().describe(
         "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (one prompt per scenario, billed in AI credits). The opt-in scenarios (filetools, chain, team, factory-run, factory-run-fix, continuation, prompt-context, events, ultragoal, sandbox-lane) are never in all. sandbox-lane runs a review, a write and a canary copilot_run lane in the OS sandbox (three lanes, each capped at 30 AI credits, about 3 estimated). [] = SDK static checks only, no model call, no opt-in needed."
@@ -90480,7 +90704,7 @@ var init_host_smoke_tool = __esm({
     };
     hostSmokeTool = {
       name: "host_smoke",
-      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
+      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @microsoft/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
       category: TOOL_CATEGORIES.SMOKE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       schema: hostSmokeSchema,

@@ -331,6 +331,8 @@ function withSseData(block: string, value: unknown): string {
 /** One delta of a streamed text field: `holder[field]` in parsed event number `event`. */
 interface DeltaSlot { event: number; holder: Record<string, unknown>; field: string }
 
+const SHELL_OUTPUT_KEY = 'tool.shell_output';
+
 /**
  * The streamed text fields of parsed events (SSE payloads, WebSocket
  * messages or SDK session events), each as its deltas in order: Chat Completions
@@ -339,6 +341,14 @@ interface DeltaSlot { event: number; holder: Record<string, unknown>; field: str
  * `response.function_call_arguments.delta`, ...) per item and part.
  */
 function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
+  return [...deltaStreamMap(events).values()];
+}
+
+/** A `tool.shell_output` chunk's `sequence` (a chunk without one sorts last). */
+const shellSequence = (slot: DeltaSlot) => (typeof slot.holder.sequence === 'number' ? slot.holder.sequence : Number.MAX_SAFE_INTEGER);
+
+/** {@link deltaStreams} by stream key (`tool.shell_output:<toolCallId>:<stream>` for shell output). */
+function deltaStreamMap(events: readonly unknown[]): Map<string, DeltaSlot[]> {
   const streams = new Map<string, DeltaSlot[]>();
   const add = (key: string, event: number, holder: Record<string, unknown>, field: string) => {
     if (typeof holder[field] !== 'string') return;
@@ -370,16 +380,24 @@ function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
     if (typeof value.type === 'string' && value.type.endsWith('.delta')) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(':'), event, value, 'delta');
     }
+    // SDK v2 live shell output (`tool.shell_output`): append-only `text` chunks per tool call and stream
+    // (omitted stream = stdout), put in `sequence` order below.
+    if (value.type === 'tool.shell_output' && isRecord(value.data)) {
+      const data = value.data;
+      add(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === 'string' ? data.stream : 'stdout'}`, event, data, 'text');
+      return;
+    }
     // SDK session events streamed in pieces (`assistant.message_delta` `deltaContent`, `assistant.tool_call_delta`
-    // `inputDelta`, `tool.execution_partial_result` `partialOutput`, `tool.execution_progress` `progressMessage`, ...):
-    // every string field, per message, tool call or reasoning id.
+    // `inputDelta`, `tool.execution_progress` `progressMessage`, ...; `tool.execution_partial_result` `partialOutput`
+    // from SDK v1 recordings): every string field, per message, tool call or reasoning id.
     if (typeof value.type === 'string' && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord(value.data)) {
       const data = value.data;
       const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(':');
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 
 const joinDeltas = (slots: readonly DeltaSlot[]) => slots.map((s) => s.holder[s.field] as string).join('');
@@ -390,7 +408,20 @@ const joinDeltas = (slots: readonly DeltaSlot[]) => slots.map((s) => s.holder[s.
  * only shows once its deltas are joined.
  */
 export function reassembledDeltas(events: readonly unknown[]): string[] {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  // `tool.shell_output` `sequence` runs across every stream of a tool call (SDK v2), so a secret printed half to
+  // stdout and half to stderr only shows once the call's streams are joined in that order. Redaction stays per
+  // stream (a redaction cannot span two streams); the gate (detect-only) also scans each call's streams joined.
+  const calls = new Map<string, DeltaSlot[][]>();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...(calls.get(call) ?? []), slots]);
+  }
+  const crossStream = [...calls.values()]
+    .filter((perStream) => perStream.length > 1)
+    .map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 
 /** Each WebSocket message's parsed JSON (undefined when it is not JSON). */

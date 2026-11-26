@@ -927,7 +927,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
       async deleteSession() { calls.push('deleteSession'); }
       async getStatus() { return {}; }
     }
-    const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forStdio: () => ({}) } }, version: '1.0.16', from: 'test' };
+    const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forSpawnedStdio: () => ({}) } }, version: '2.0.3', from: 'test' };
     const deps = { env: { PATH: process.env.PATH }, platform: 'linux' as const, loadSdk: async () => loaded as never, resolveBin: () => '/bin/copilot', userConfigDir: () => join(dir, 'no-user'), killTree: () => { throw new Error('unexpected tree kill'); } };
     const info = await probeLaneModel(join(dir, 'probe'), deps);
     expect(info).toEqual({ model: 'big-model', multiplier: 10, detail: 'listModels() billing.multiplier of big-model' });

@@ -1,10 +1,28 @@
 # oh-my-copilot v5.33.0
 
-This release lets the factory run .NET repositories (`dotnet build` / `dotnet test` gates, .NET lanes on every forge and an opt-in sandboxed NuGet restore), and adds one place that tells you which factory runs need you: `omg factory attention`, with the same list in the HUD, `omg factory poll`, notifications and a rebuilt `omg factory dashboard` that can serve a live local page. See CHANGELOG.md.
+**Breaking: this release moves to Copilot SDK v2.** oh-my-copilot now drives Copilot through `@microsoft/copilot-sdk` 2.x and needs Copilot CLI 1.0.113 or newer (tested: SDK 2.0.3 with CLI 1.0.116). `@github/copilot-sdk` is no longer used. See "Upgrade: Copilot SDK v2" below.
+
+This release also lets the factory run .NET repositories (`dotnet build` / `dotnet test` gates, .NET lanes on every forge and an opt-in sandboxed NuGet restore), and adds one place that tells you which factory runs need you: `omg factory attention`, with the same list in the HUD, `omg factory poll`, notifications and a rebuilt `omg factory dashboard` that can serve a live local page. See CHANGELOG.md.
 
 Install with `npm install -g oh-my-copilot@5.33.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
 There is no new factory bench run in this release. The bench baseline is unchanged from v5.31.0.
+
+## Upgrade: Copilot SDK v2
+
+Copilot CLI 1.0.113 moved to SDK protocol 4, which no `@github/copilot-sdk` release speaks, so sdk team workers, `copilot_run`, factory lanes and the tier 2 smoke failed with a protocol mismatch on an updated CLI. From this release they use SDK v2 only.
+
+1. Update Copilot CLI to 1.0.116 or newer (`npm i -g @github/copilot@latest`, or `copilot update` for a WinGet or Homebrew install). 1.0.113 to 1.0.115 speak protocol 4 but are untested; `omg factory check --host` warns for them and fails for anything older.
+2. Replace the SDK: `npm uninstall -g @github/copilot-sdk`, then `npm i -g @microsoft/copilot-sdk@2 --ignore-scripts`. A global install also pulls a platform runtime package of about 200 MB that oh-my-copilot never loads: it always drives your installed `copilot`.
+3. Run `omg factory check --host`. It names the old package, a CLI that is too old, or an SDK outside `^2.0.3`, each with the fix command.
+
+What changes in behaviour:
+
+- **The sandbox is confirmed after the session is created.** The engine re-sends the policy, requires the runtime to report success, and reads back the effective sandbox state. A session counts as sandboxed only when that state is enabled, has no bypass or opt-out, and is no weaker than the policy sent. Anything else fails closed: a write lane refuses with `sandbox-unavailable:`, a review runs read-only without a shell, and a gate command does not start.
+- **A sandbox that is switched off or weakened mid-session stops the lane.** The run parks at `sandbox-escaped` for a human instead of retrying.
+- **Only a sandbox-policy error counts as a sandbox failure at session start.** A login, network or model error is an ordinary failure.
+- **sdk team workers without a configured model cost more on CLI 1.0.116.** With no `team.sdk.model`, workers run on the runtime's automatic model choice, which measured about 10 AI credits per worker turn in the smoke. Set `team.sdk.model` to a model you choose.
+- Recordings made with `omg smoke copilot --record` under SDK v1 and CLI 1.0.112 will probably not replay; record them again.
 
 ## Highlights
 
@@ -30,7 +48,8 @@ There is no new factory bench run in this release. The bench baseline is unchang
 
 ## Caveats
 
-- **Test evidence:** published with CI on the release commit and a live Tier 2 smoke of the built package, not the maintainer's local full test suite.
+- **Test evidence:** published with CI on the release commit, not the maintainer's local full test suite. The SDK v2 change was smoke-tested live on Windows against Copilot CLI 1.0.116 before the release commit (the standard scenarios, sandboxed review, write and canary lanes, a two-worker sdk team and a factory run to the merge gate); the release commit itself got no separate local live smoke.
+- **SDK v2 is verified live on Windows only.** The check that compares the runtime's effective sandbox policy with the one sent was validated against the Windows runtime. On Linux or macOS, or on a machine with an organisation-managed sandbox policy or a sandbox proxy, a runtime that reports extra entries would make lanes refuse with `sandbox-unavailable:` (fail closed). Please report it if you see that.
 - **.NET support is verified on Windows with .NET SDK 10 only.** None of it is verified on Linux or macOS.
 - **Private NuGet feeds are not supported yet.** A restore that needs a private or local feed, or gets a feed's 401/403, parks. NuGet network for lanes and `packages.config` projects are not supported either.
 - **Microsoft.Testing.Platform:** on Windows, a run whose `dotnet test` local gate uses Microsoft.Testing.Platform in the OS sandbox parks at `gates` at run start, because the test app cannot connect back to `dotnet test` there.

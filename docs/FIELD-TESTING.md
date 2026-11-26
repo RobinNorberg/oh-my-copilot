@@ -141,14 +141,15 @@ git config --global user.email "<id>+<login>@users.noreply.github.com"
 
 ```powershell
 npm i -g oh-my-copilot@latest
-npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
 omg --version
 omg setup
 omg doctor
 ```
 
-Write the version down; it goes in every issue. `@github/copilot-sdk` is an
-optional and not installed with oh-my-copilot: without it `omg smoke copilot --sdk-static` and every tier 2
+Write the version down; it goes in every issue. `@microsoft/copilot-sdk` (SDK v2;
+it needs Copilot CLI 1.0.113 or newer, and replaces `@github/copilot-sdk`, which
+you can uninstall) is optional and not installed with oh-my-copilot: without it `omg smoke copilot --sdk-static` and every tier 2
 form exit 2 ("skipped"). Exit 2 is not a pass; report it as skipped.
 
 For team workers in panes (Step 3) install psmux 3.3.7 or later and check
@@ -330,7 +331,7 @@ Check every command's syntax against your version first, with
 1. Free checks: `omg doctor`, `omg smoke copilot` (tier 0) and
    `omg smoke copilot --sdk-static`. Observe: all checks pass; `sdk.sandbox`
    reports host support. Exit 2 means skipped (the copilot binary or
-   `@github/copilot-sdk` was not found), not passed.
+   `@microsoft/copilot-sdk` was not found), not passed.
 2. With Robin's yes (credits), both transports. Under Copilot CLI the
    default `--transport auto` picks `sdk`, so the psmux run needs
    `--transport pane`:

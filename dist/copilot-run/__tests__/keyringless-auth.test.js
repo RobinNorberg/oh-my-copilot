@@ -115,7 +115,7 @@ function recordingSdk(listModels) {
             seen.clientOpts.push(opts);
         }
         async start() {
-            const home = this.opts.baseDirectory;
+            const home = this.opts.runtime.baseDirectory;
             seen.homeConfigs.push(existsSync(join(home, 'config.json')) ? readFileSync(join(home, 'config.json'), 'utf8') : '');
         }
         async stop() { return []; }
@@ -123,8 +123,8 @@ function recordingSdk(listModels) {
         async createSession(cfg) { seen.sessions.push(cfg); return { sessionId: 's', rpc: { model: { getCurrent: async () => ({ modelId: 'm' }) } }, disconnect: async () => { } }; }
         async deleteSession() { }
     }
-    const RuntimeConnection = { forStdio: (o) => { seen.envs.push(o.env ?? {}); return o; } };
-    return { seen, loadSdk: async () => ({ module: { CopilotClient, RuntimeConnection }, version: '1.0.16', from: 'test' }) };
+    const RuntimeConnection = { forSpawnedStdio: (o) => { seen.envs.push(o.env ?? {}); return o; } };
+    return { seen, loadSdk: async () => ({ module: { CopilotClient, RuntimeConnection }, version: '2.0.3', from: 'test' }) };
 }
 function probeDeps(userConfig, loadSdk, env = {}) {
     const root = mkdtempSync(join(tmpdir(), 'omg-keyringless-probe-'));
@@ -144,13 +144,13 @@ function probeDeps(userConfig, loadSdk, env = {}) {
 }
 describe('no-session probes pass the credential through the client option', () => {
     const stored = () => configDir(loggedIn({ authTokens: { 'https://github.com:me': { token: STORED } } }));
-    it('the model catalogue read: client gitHubToken is the stored token; the runtime env and the job home never hold it', async () => {
+    it('the model catalogue read: client github.token is the stored token; the runtime env and the job home never hold it', async () => {
         const sdk = recordingSdk(async () => [{ id: 'mai-code-2' }]);
         const { deps } = probeDeps(stored(), sdk.loadSdk);
         let cleanup;
         expect(await fetchCopilotCatalogue({ deps, onCleanup: (d) => { cleanup = d; } })).toEqual({ models: ['mai-code-2'] });
         await cleanup;
-        expect(sdk.seen.clientOpts[0].gitHubToken).toBe(STORED);
+        expect(sdk.seen.clientOpts[0].github?.token).toBe(STORED);
         expect(JSON.stringify(sdk.seen.envs[0])).not.toContain(STORED);
         // The env that carries the client credential: no git root search past the job root, no auto-approved tool.
         expect(sdk.seen.envs[0]).toMatchObject({ GIT_CEILING_DIRECTORIES: resolve(join(deps.tmpRoot, 'omg-model-catalogue')), COPILOT_ALLOW_ALL: 'false' });
@@ -164,7 +164,7 @@ describe('no-session probes pass the credential through the client option', () =
         let cleanup;
         await fetchCopilotCatalogue({ deps, onCleanup: (d) => { cleanup = d; } });
         await cleanup;
-        expect(sdk.seen.clientOpts[0].gitHubToken).toBe(ENV_TOKEN);
+        expect(sdk.seen.clientOpts[0].github?.token).toBe(ENV_TOKEN);
         expect(JSON.stringify(sdk.seen.envs[0])).not.toContain(ENV_TOKEN);
     });
     it('the model catalogue read: no credential, no option (the runtime then uses the OS credential store)', async () => {
@@ -173,7 +173,7 @@ describe('no-session probes pass the credential through the client option', () =
         let cleanup;
         await fetchCopilotCatalogue({ deps, onCleanup: (d) => { cleanup = d; } });
         await cleanup;
-        expect(sdk.seen.clientOpts[0]).not.toHaveProperty('gitHubToken');
+        expect(sdk.seen.clientOpts[0]).not.toHaveProperty('github');
     });
     it('the model catalogue read: "Not authenticated" names what was tried', async () => {
         const sdk = recordingSdk(async () => { throw new Error(`Request models.list failed with message: Not authenticated ${STORED}`); });
@@ -185,12 +185,12 @@ describe('no-session probes pass the credential through the client option', () =
         expect(error).toContain('credentials tried: the stored login (plaintext token in the Copilot config.json)');
         expect(error).not.toContain(STORED);
     });
-    it('the bench model probe: client gitHubToken before listModels(), never in the env or the job home', async () => {
+    it('the bench model probe: client github.token before listModels(), never in the env or the job home', async () => {
         const sdk = recordingSdk(async () => [{ id: 'mai-code-2', billing: { multiplier: 1 } }]);
         const { root, deps } = probeDeps(stored(), sdk.loadSdk);
         const info = await probeLaneModel(join(root, 'probe'), deps, 'mai-code-2');
         expect(info).toMatchObject({ model: 'mai-code-2', multiplier: 1, offered: ['mai-code-2'] });
-        expect(sdk.seen.clientOpts[0].gitHubToken).toBe(STORED);
+        expect(sdk.seen.clientOpts[0].github?.token).toBe(STORED);
         expect(JSON.stringify(sdk.seen.envs[0])).not.toContain(STORED);
         expect(sdk.seen.envs[0]).toMatchObject({ GIT_CEILING_DIRECTORIES: resolve(join(root, 'probe')), COPILOT_ALLOW_ALL: 'false' });
         expect(sdk.seen.homeConfigs[0]).not.toContain(STORED);
@@ -219,7 +219,7 @@ describe('a copilot_run lane on a keyring-less host', () => {
                 constructor(o) {
                     super(o);
                     clientOpts.push(o);
-                    const home = o.baseDirectory;
+                    const home = o.runtime.baseDirectory;
                     homeConfigs.push(readFileSync(join(home, 'config.json'), 'utf8'));
                 }
             }
@@ -228,8 +228,8 @@ describe('a copilot_run lane on a keyring-less host', () => {
         const m = new CopilotRunManager(deps);
         const done = await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId, 10_000);
         expect(done.status).toBe('completed');
-        expect(calls.sessions[0].gitHubToken).toBe(STORED);
-        expect(clientOpts[0]).not.toHaveProperty('gitHubToken');
+        expect(calls.sessions[0].github?.token).toBe(STORED);
+        expect(clientOpts[0]).not.toHaveProperty('github');
         expect(JSON.stringify(calls.connections[0].env)).not.toContain(STORED);
         expect(homeConfigs[0]).not.toContain(STORED);
         expect(homeConfigs[0]).not.toContain('authTokens');
@@ -245,7 +245,7 @@ describe('a copilot_run lane on a keyring-less host', () => {
         const m = new CopilotRunManager(deps);
         await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId, 10_000);
         expect(calls.sessions).toHaveLength(1);
-        expect(calls.sessions[0]).not.toHaveProperty('gitHubToken');
+        expect(calls.sessions[0]).not.toHaveProperty('github');
     });
 });
 describe('the lane sandbox on a keyring-less host with COPILOT_HOME outside the real home', () => {
@@ -277,8 +277,8 @@ describe('the lane sandbox on a keyring-less host with COPILOT_HOME outside the 
         };
         const m = new CopilotRunManager(deps);
         const done = await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId, 10_000);
-        const update = calls.optionsUpdates[0];
-        return { root, done, denied: update?.sandboxConfig.userPolicy.filesystem.deniedPaths };
+        const sandbox = calls.sessions[0]?.permissions.sandbox;
+        return { root, done, denied: sandbox?.userPolicy.filesystem.deniedPaths };
     }
     it('linux: the whole config dir is denied', async () => {
         const { root, done, denied } = await laneDenied();

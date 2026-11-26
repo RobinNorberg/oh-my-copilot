@@ -700,6 +700,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
       && (x.model === undefined || isStr(x.model))
       && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
+        && (sbx.stateEscaped === undefined || isStr(sbx.stateEscaped))
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
   })) return 'lanes';
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';

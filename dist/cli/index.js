@@ -1282,10 +1282,10 @@ smokeCmd
     .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
     .addHelpText('after', `
 Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary or
-@github/copilot-sdk not found, no other failure).
+@microsoft/copilot-sdk not found, no other failure).
 
-Tier 2 needs @github/copilot-sdk, which oh-my-copilot does not install:
-  npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+Tier 2 needs @microsoft/copilot-sdk, which oh-my-copilot does not install:
+  npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
 It always drives the installed copilot binary, never the SDK's bundled runtime.
 
 Examples:

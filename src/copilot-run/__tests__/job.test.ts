@@ -147,7 +147,7 @@ describe('copilot_run events.jsonl', () => {
     const moved = `${eventsPath}.moved`;
     renameSync(eventsPath, moved);
     writeFileSync(eventsPath, '');
-    calls.sessions[0].onEvent!({ type: 'assistant.message', data: { content: 'after the swap' } });
+    calls.sessions[0].events!.onEvent!({ type: 'assistant.message', data: { content: 'after the swap' } });
     await m.cancel(started.jobId as string);
     expect(readFileSync(moved, 'utf8')).toContain('after the swap');
     expect(readFileSync(eventsPath, 'utf8')).toBe('');
@@ -160,7 +160,7 @@ describe('copilot_run review profile', () => {
     const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });
     expect(started.profile).toBe('review');
     await new Promise((r) => setTimeout(r, 50));
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const wt = (started.worktree as { path: string }).path;
     const ctx = { sessionId: 's' };
 
@@ -193,7 +193,7 @@ describe('copilot_run review profile', () => {
     const started = m.start({ prompt: 'implement', cwd: repo });
     expect(started.profile).toBe('write');
     await new Promise((r) => setTimeout(r, 50));
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const wt = (started.worktree as { path: string }).path;
     expect(await decide({ kind: 'shell', fullCommandText: 'git commit -am x' }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
     expect(await decide({ kind: 'write', path: join(wt, 'README.md') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
@@ -346,9 +346,9 @@ describe('copilot_run allowLive and session env', () => {
     deps.loadSdk = async () => {
       const loaded = await inner();
       const Client = loaded!.module.CopilotClient;
-      class Recording extends (Client as unknown as new (o: unknown) => { createSession(cfg: { pluginDirectories?: string[] }): Promise<unknown> }) {
-        async createSession(cfg: { pluginDirectories?: string[] }) {
-          for (const dir of cfg.pluginDirectories ?? []) seen.push(Object.keys((JSON.parse(readFileSync(join(dir, 'copilot', 'hooks.json'), 'utf8')) as { hooks: object }).hooks));
+      class Recording extends (Client as unknown as new (o: unknown) => { createSession(cfg: { plugins?: { directories?: string[] } }): Promise<unknown> }) {
+        async createSession(cfg: { plugins?: { directories?: string[] } }) {
+          for (const dir of cfg.plugins?.directories ?? []) seen.push(Object.keys((JSON.parse(readFileSync(join(dir, 'copilot', 'hooks.json'), 'utf8')) as { hooks: object }).hooks));
           return super.createSession(cfg);
         }
       }
@@ -357,7 +357,7 @@ describe('copilot_run allowLive and session env', () => {
     const m = new CopilotRunManager(deps);
     const lane = await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
     await m.wait(m.start({ prompt: 'b', cwd: repo }).jobId, 10_000);
-    const [laneDirs, plainDirs] = calls.sessions.map((s) => s.pluginDirectories!);
+    const [laneDirs, plainDirs] = calls.sessions.map((s) => s.plugins.directories!);
     expect(laneDirs).toHaveLength(1);
     expect(laneDirs![0]).not.toBe(plugin);
     expect(laneDirs![0]!.endsWith(join('home', 'lane-plugin'))).toBe(true);
@@ -389,7 +389,7 @@ describe('copilot_run allowLive and session env', () => {
     expect(done.status).toBe('completed');
     expect(done.notes).toEqual(expect.arrayContaining([expect.stringContaining('was not removed (the next lane removes it): EBUSY: injected')]));
     // The home with the mirror is kept (no recursive rm over it); the next lane sweeps the mirror.
-    const laneDir = calls.sessions[0]!.pluginDirectories![0]!;
+    const laneDir = calls.sessions[0]!.plugins.directories![0]!;
     expect(existsSync(laneDir)).toBe(true);
     expect(readFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'utf8')).toBe('skill');
     // The next lane sweeps the finished job's mirror, link-safe.
@@ -402,7 +402,7 @@ describe('copilot_run allowLive and session env', () => {
   it('minimalHooks fails closed: a plugin the lane dir cannot be made from loads whole (every hook registered), with a note', async () => {
     const m = manager('idle');
     const done = await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
-    expect(calls.sessions[0]!.pluginDirectories).toEqual(['/plugin']);
+    expect(calls.sessions[0]!.plugins.directories).toEqual(['/plugin']);
     expect(done.notes).toEqual(expect.arrayContaining([expect.stringContaining('lane hook registration fell back to the full plugin hooks')]));
     // The dispatcher fast path still applies.
     expect(calls.connections[0]!.env!.OMC_LANE_HOOKS).toBe(LANE_HOOKS_MINIMAL);
@@ -421,7 +421,7 @@ describe('copilot_run allowLive and session env', () => {
     for (const key of Object.keys(secrets)) expect(lane[key], key).toBeUndefined();
     // The Copilot credential goes over the session RPC, never into the env the shell inherits.
     expect(lane.COPILOT_GITHUB_TOKEN).toBeUndefined();
-    expect(calls.sessions[0].gitHubToken).toBe('copilot-only');
+    expect(calls.sessions[0].github?.token).toBe('copilot-only');
     expect(lane.GH_CONFIG_DIR).not.toBe('/home/me/.config/gh');
     expect(lane.AZURE_CONFIG_DIR).toBe(lane.GH_CONFIG_DIR);
     expect(lane).toMatchObject({ GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
@@ -987,7 +987,7 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
     const m = manager('hang');
     const started = m.start({ prompt: 'implement', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const wt = (started.worktree as { path: string }).path;
     mkdirSync(join(wt, 'src', 'd'), { recursive: true });
     expect(await decide({ kind: 'write', path: join(wt, 'src', 'd', 'config') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
@@ -1304,7 +1304,7 @@ describe('copilot_run hook paths', () => {
     const started = m.start({ prompt: 'implement', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
     const wt = (started.worktree as { path: string }).path;
-    const decide = calls.sessions[0].onPermissionRequest as (req: object, ctx: object) => unknown;
+    const decide = calls.sessions[0].permissions.onRequest as (req: object, ctx: object) => unknown;
     expect(await decide({ kind: 'write', path: join(wt, 'tools', 'hooks', 'pre-commit') }, { sessionId: 's' })).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path tools\/hooks\/pre-commit/) });
     await m.cancel(started.jobId as string);
   });
@@ -1324,7 +1324,7 @@ describe('copilot_run write-time protected paths', () => {
     const started = lane.start({ prompt: 'implement', cwd: repo }, { sandboxScope: 'factory' });
     await new Promise((r) => setTimeout(r, 50));
     const wt = (started.worktree as { path: string }).path;
-    const decide = calls.sessions[0].onPermissionRequest as (req: object, ctx: object) => unknown;
+    const decide = calls.sessions[0].permissions.onRequest as (req: object, ctx: object) => unknown;
     for (const rel of ['.claude/settings.json', '.vscode/tasks.json', '.mcp.json', '.github/copilot-instructions.md', '.husky/pre-commit', 'AGENTS.md']) {
       expect(await tryWrite(decide, join(wt, rel)), rel).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path/) });
     }
@@ -1334,7 +1334,7 @@ describe('copilot_run write-time protected paths', () => {
     const plain = manager('hang');
     const job = plain.start({ prompt: 'implement', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
-    expect(await tryWrite(calls.sessions[1].onPermissionRequest as (req: object, ctx: object) => unknown, join((job.worktree as { path: string }).path, '.vscode', 'tasks.json'))).toEqual({ kind: 'approve-once' });
+    expect(await tryWrite(calls.sessions[1].permissions.onRequest as (req: object, ctx: object) => unknown, join((job.worktree as { path: string }).path, '.vscode', 'tasks.json'))).toEqual({ kind: 'approve-once' });
     await plain.cancel(job.jobId as string);
   });
 
@@ -1344,7 +1344,7 @@ describe('copilot_run write-time protected paths', () => {
     const started = m.start({ prompt: 'implement', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
     const wt = (started.worktree as { path: string }).path;
-    const decide = calls.sessions[0].onPermissionRequest as (req: object, ctx: object) => unknown;
+    const decide = calls.sessions[0].permissions.onRequest as (req: object, ctx: object) => unknown;
     expect(await tryWrite(decide, join(wt, 'tools', 'hooks', 'post-checkout'))).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path tools\/hooks\/post-checkout/) });
     expect(await tryWrite(decide, join(wt, 'tools', 'build.sh'))).toEqual({ kind: 'approve-once' });
     await m.cancel(started.jobId as string);

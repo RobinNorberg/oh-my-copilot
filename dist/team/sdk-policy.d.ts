@@ -100,7 +100,13 @@ export declare function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkP
 /**
  * Built-in tools that start or drive other agents. A worker is one agent on
  * one credit cap; these would fan out work (and spend) outside the team's
- * task and claim protocol.
+ * task and claim protocol. `send_inbox` messages other agents (the runtime's
+ * sidekick agents, the caller); `context_board` edits the session's dynamic
+ * context board. SDK v2 lists both beside `task` and the `*_agent` tools in
+ * `BuiltInTools.Isolated`, whose contract (toolSet.js) says they touch no
+ * state outside the session, so neither leaks across sessions; they are
+ * excluded because they steer the session's own agents and context outside
+ * the team's task and claim protocol, and a worker needs neither.
  */
 export declare const SDK_AGENT_FANOUT_TOOLS: readonly string[];
 /**

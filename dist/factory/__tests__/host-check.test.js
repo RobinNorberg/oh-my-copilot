@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SANDBOX_SETTINGS } from '../../copilot-run/sandbox.js';
-import { NODE_ENGINE_RANGE, newerCachedRuntimes, nodeSatisfiesEngines, runFactoryHostCheck, runHostCheck } from '../host-check.js';
+import { NODE_ENGINE_RANGE, SDK_MIGRATE_COMMAND, nodeSatisfiesEngines, runFactoryHostCheck, runHostCheck } from '../host-check.js';
+import { COPILOT_UPDATE_COMMAND } from '../../smoke/copilot-sdk-driver.js';
+import { SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 const TOKEN = 'ghu_' + 'A'.repeat(36);
 const dirs = [];
 afterEach(() => { for (const d of dirs.splice(0))
@@ -19,24 +21,21 @@ const login = { loggedInUsers: [{ host: 'https://github.com', login: 'octo' }], 
 function execFor(versions) {
     return (cmd) => (versions[cmd] !== undefined ? { status: 0, stdout: versions[cmd], stderr: '' } : { status: 127, stdout: '', stderr: `${cmd}: not found` });
 }
-const sdk = { version: '1.0.16', from: 'global npm root', module: {} };
+const sdk = { version: '2.0.3', from: 'global npm root', module: {} };
 function deps(over = {}) {
     return {
         platform: 'linux',
-        arch: 'x64',
         env: {},
         nodeVersion: '22.23.5',
-        homedir: '/home/u',
         userConfigDir: configDir({ ...login, authTokens: { 'https://github.com:octo': TOKEN } }),
         exec: execFor({ git: 'git version 2.50.1\n', bwrap: 'bubblewrap 0.10.0\n' }),
         bwrapTrial: () => null,
         sandboxSettings: () => ({ ...DEFAULT_SANDBOX_SETTINGS }),
         resolveBin: () => '/usr/bin/copilot',
-        copilotVersion: () => 'GitHub Copilot CLI 1.0.112.\n',
+        copilotVersion: () => 'GitHub Copilot CLI 1.0.116.\n',
         loadSdk: async () => sdk,
-        probeRuntime: async () => ({ started: true, mismatch: null }),
-        listDir: () => { throw new Error('ENOENT'); },
-        exists: () => false,
+        legacySdkVersion: () => null,
+        probeRuntime: async () => ({ started: true, mismatch: null, status: { version: '1.0.116', protocolVersion: 4 } }),
         ...over,
     };
 }
@@ -47,7 +46,7 @@ describe('factory host check', () => {
         const code = await runFactoryHostCheck({}, deps(), (l) => lines.push(l));
         expect(code).toBe(0);
         const items = await runHostCheck(deps());
-        expect(items.map((i) => i.id)).toEqual(['node', 'git', 'sandbox', 'copilot', 'sdk', 'sdk.protocol', 'login', 'copilot.pkg-cache']);
+        expect(items.map((i) => i.id)).toEqual(['node', 'git', 'sandbox', 'copilot', 'sdk', 'sdk.protocol', 'login']);
         expect(items.every((i) => i.status === 'ok')).toBe(true);
         expect(byId(items, 'sandbox').detail).toContain('bubblewrap 0.10.0');
         expect(lines.at(-1)).toBe('host: ready for the factory');
@@ -88,13 +87,9 @@ describe('factory host check', () => {
         const lines = [];
         expect(await runFactoryHostCheck({}, deps({ bwrapTrial: () => problem, ...over }), (l) => lines.push(l))).toBe(0);
     });
-    it('reports ok on macOS with the token in the keychain, and a PowerShell move on Windows', async () => {
+    it('reports ok on macOS with the token in the keychain', async () => {
         const mac = deps({ platform: 'darwin', userConfigDir: configDir(login), probeRuntime: async () => ({ started: true, mismatch: null, host: { supported: true, capabilities: {} } }) });
         expect(byId(await runHostCheck(mac), 'login')).toMatchObject({ status: 'ok', detail: expect.stringContaining('keychain') });
-        const win = deps({ platform: 'win32', userConfigDir: configDir(login), env: { LOCALAPPDATA: 'C:\L' }, listDir: () => ['2.0.0'], exists: () => true });
-        const fix = byId(await runHostCheck(win), 'copilot.pkg-cache').fix;
-        expect(fix).toContain('Move-Item');
-        expect(fix).not.toContain('mv ');
     });
     it('scrubs a token-shaped string from probe and sandbox messages in text and JSON', async () => {
         const leak = 'ghp_' + 'B'.repeat(36);
@@ -122,25 +117,48 @@ describe('factory host check', () => {
     it('fails a missing copilot and SDK with the install commands and skips the protocol probe', async () => {
         let probed = false;
         const items = await runHostCheck(deps({ resolveBin: () => null, loadSdk: async () => null, probeRuntime: async () => { probed = true; return { started: true, mismatch: null }; } }));
-        expect(byId(items, 'copilot')).toMatchObject({ status: 'fail', fix: 'npm i -g @github/copilot@1.0.112' });
-        expect(byId(items, 'sdk')).toMatchObject({ status: 'fail', fix: expect.stringContaining('npm i -g @github/copilot-sdk') });
+        expect(byId(items, 'copilot')).toMatchObject({ status: 'fail', fix: COPILOT_UPDATE_COMMAND });
+        expect(byId(items, 'sdk')).toMatchObject({ status: 'fail', detail: expect.stringContaining('@microsoft/copilot-sdk is not installed'), fix: SDK_INSTALL_COMMAND });
         expect(byId(items, 'sdk.protocol').status).toBe('warn');
         expect(probed).toBe(false);
     });
-    it('reads the version as factory launches run it and warns past the protocol-3 CLI', async () => {
+    it('reads the version as factory launches run it: a protocol-3 CLI fails, 1.0.113..1.0.115 warn, 1.0.116 is ok', async () => {
         const envs = [];
-        const items = await runHostCheck(deps({ copilotVersion: (_b, env) => { envs.push(env); return 'GitHub Copilot CLI 1.0.114.'; } }));
+        const at = async (v) => byId(await runHostCheck(deps({ copilotVersion: (_b, env) => { envs.push(env); return `GitHub Copilot CLI ${v}.`; } })), 'copilot');
+        const old = await at('1.0.112');
         expect(envs[0].COPILOT_AUTO_UPDATE).toBe('false');
-        expect(byId(items, 'copilot')).toMatchObject({ status: 'warn', fix: 'npm i -g @github/copilot@1.0.112' });
+        expect(old).toMatchObject({ status: 'fail', detail: expect.stringContaining('protocol 3'), fix: expect.stringContaining(COPILOT_UPDATE_COMMAND) });
+        expect(old.fix).toContain('copilot update');
+        expect(await at('1.0.114')).toMatchObject({ status: 'warn', detail: expect.stringContaining('1.0.116'), fix: expect.stringContaining(COPILOT_UPDATE_COMMAND) });
+        expect(await at('1.0.116')).toMatchObject({ status: 'ok', detail: expect.stringContaining('copilot 1.0.116') });
+        expect(await at('1.0.120')).toMatchObject({ status: 'ok' });
     });
-    it('fails a protocol mismatch and exits 1', async () => {
-        const mismatch = 'Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4.';
-        const d = deps({ probeRuntime: async () => ({ started: false, mismatch }) });
-        expect(byId(await runHostCheck(d), 'sdk.protocol')).toMatchObject({ status: 'fail', detail: mismatch });
+    it('fails with the migrate command when only SDK v1 is installed, and notes a leftover v1 next to v2', async () => {
+        const only = byId(await runHostCheck(deps({ loadSdk: async () => null, legacySdkVersion: () => '1.0.34' })), 'sdk');
+        expect(only).toMatchObject({ status: 'fail', fix: SDK_MIGRATE_COMMAND });
+        expect(only.detail).toContain('@github/copilot-sdk 1.0.34');
+        expect(only.detail).toContain('@microsoft/copilot-sdk');
+        expect(SDK_MIGRATE_COMMAND).toBe(`npm uninstall -g @github/copilot-sdk && ${SDK_INSTALL_COMMAND}`);
+        const both = byId(await runHostCheck(deps({ legacySdkVersion: () => '1.0.34' })), 'sdk');
+        expect(both.status).toBe('ok');
+        expect(both.detail).toContain('npm uninstall -g @github/copilot-sdk');
+        const old = byId(await runHostCheck(deps({ loadSdk: async () => ({ ...sdk, version: '2.0.2' }) })), 'sdk');
+        expect(old).toMatchObject({ status: 'fail', detail: expect.stringContaining('outside ^2.0.3'), fix: SDK_INSTALL_COMMAND });
+    });
+    it('reports the runtime version and protocol of the handshake', async () => {
+        expect(byId(await runHostCheck(deps()), 'sdk.protocol')).toMatchObject({ status: 'ok', detail: expect.stringContaining('runtime 1.0.116, protocol 4') });
+        expect(byId(await runHostCheck(deps({ probeRuntime: async () => ({ started: true, mismatch: null }) })), 'sdk.protocol').detail).toContain('runtime status unread');
+    });
+    it('fails a protocol mismatch with the fix for the side that is behind and exits 1', async () => {
+        const oldCli = 'Copilot SDK/CLI protocol mismatch: @microsoft/copilot-sdk speaks protocol 4, the Copilot CLI speaks protocol 3. The Copilot CLI is too old for SDK v2: update it to >= 1.0.116.';
+        const d = deps({ probeRuntime: async () => ({ started: false, mismatch: oldCli }) });
+        expect(byId(await runHostCheck(d), 'sdk.protocol')).toMatchObject({ status: 'fail', detail: oldCli, fix: COPILOT_UPDATE_COMMAND });
         const lines = [];
         expect(await runFactoryHostCheck({}, d, (l) => lines.push(l))).toBe(1);
-        expect(lines.join('\n')).toContain('fix: npm i -g @github/copilot@1.0.112');
+        expect(lines.join('\n')).toContain(`fix: ${COPILOT_UPDATE_COMMAND}`);
         expect(lines.at(-1)).toContain('not ready');
+        const newCli = 'Copilot SDK/CLI protocol mismatch: @microsoft/copilot-sdk speaks protocol 4, the Copilot CLI speaks protocol 5. Update @microsoft/copilot-sdk when a version supporting protocol 5 is available.';
+        expect(byId(await runHostCheck(deps({ probeRuntime: async () => ({ started: false, mismatch: newCli }) })), 'sdk.protocol')).toMatchObject({ status: 'fail', fix: SDK_INSTALL_COMMAND });
     });
     it('judges the login by credential names only and never prints a token', async () => {
         const env = { COPILOT_GITHUB_TOKEN: TOKEN, GH_TOKEN: TOKEN };
@@ -154,21 +172,6 @@ describe('factory host check', () => {
         expect(byId(await runHostCheck(deps({ userConfigDir: configDir(login) })), 'login').status).toBe('warn');
         expect(byId(await runHostCheck(deps({ userConfigDir: configDir(), env: { GH_TOKEN: TOKEN } })), 'login').status).toBe('warn');
         expect(byId(await runHostCheck(deps({ userConfigDir: configDir() })), 'login')).toMatchObject({ status: 'fail', fix: expect.stringContaining('copilot login') });
-    });
-    it('warns about a cached runtime newer than the protocol-3 CLI, with the move-aside remedy', async () => {
-        const tree = { [join('/home/u', '.cache', 'copilot', 'pkg', 'linux-x64')]: ['1.0.112', '1.0.114', 'tmp'] };
-        const fs = { listDir: (dir) => { if (tree[dir])
-                return tree[dir]; throw new Error('ENOENT'); }, exists: (p) => p.endsWith('index.js') };
-        const newer = join('/home/u', '.cache', 'copilot', 'pkg', 'linux-x64', '1.0.114');
-        expect(newerCachedRuntimes({ ...deps(), ...fs })).toEqual([newer]);
-        const item = byId(await runHostCheck(deps(fs)), 'copilot.pkg-cache');
-        expect(item.status).toBe('warn');
-        expect(item.fix).toContain(`mv "${newer}" "${newer}.parked"`);
-        expect(item.fix).toContain('COPILOT_AUTO_UPDATE=false');
-        // COPILOT_PKG_CACHE_HOME is searched first.
-        const relocated = { [join('/x', 'pkg', 'linux-x64')]: ['2.0.0'] };
-        expect(newerCachedRuntimes({ ...deps(), env: { COPILOT_PKG_CACHE_HOME: '/x' }, listDir: (d) => { if (relocated[d])
-                return relocated[d]; throw new Error('ENOENT'); }, exists: () => true })).toEqual([join('/x', 'pkg', 'linux-x64', '2.0.0')]);
     });
     it('prints schemaVersion 1 JSON', async () => {
         const lines = [];

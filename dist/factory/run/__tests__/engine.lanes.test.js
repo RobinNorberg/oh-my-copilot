@@ -341,8 +341,10 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     it.each([
         ['refused', 0, 'sandbox-unavailable: MXC is not available', 'sandbox-unavailable'],
         ['enforced', 1, 'sandbox-escaped: powershell call c1 ran outside the sandbox', 'sandbox-escaped'],
-    ])('a write lane whose sandbox is %s parks at %s without a retry or a push', async (mode, unsandboxedCalls, error, gate) => {
-        const sandbox = { mode, host: { supported: mode !== 'refused', capabilities: {} }, applied: 'none', canary: 'skipped', unsandboxedCalls, cliVersion: 'x', sdkVersion: 'y' };
+        // The tripwire: no call was counted (one killed before its completion event never is), the record carries the escape.
+        ['enforced', 0, "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))", 'sandbox-escaped'],
+    ])('a write lane whose sandbox is %s (%s unsandboxed calls) parks at %s without a retry or a push', async (mode, unsandboxedCalls, error, gate) => {
+        const sandbox = { mode, host: { supported: mode !== 'refused', capabilities: {} }, applied: 'none', canary: 'skipped', unsandboxedCalls, cliVersion: 'x', sdkVersion: 'y', ...(unsandboxedCalls === 0 && mode === 'enforced' ? { stateEscaped: error } : {}) };
         const { lanes, done } = run([() => ({ state: 'failed', error, sandbox })]);
         const out = await done;
         expect(out.gate?.name).toBe(gate);

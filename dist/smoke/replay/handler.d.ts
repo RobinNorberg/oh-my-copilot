@@ -2,7 +2,7 @@
  * Cassette request handlers and the `withCassette` SDK wrapper (design:
  * .omc/plans/2026-10-29-copilot-replay-design.md, sections 2, 4 and 8).
  *
- * The SDK's experimental `CopilotClientOptions.requestHandler` receives every
+ * The SDK's experimental `CopilotClientOptions.models.requestHandler` receives every
  * model-layer request the runtime issues. {@link withCassette} (applied in
  * `loadCopilotSdk`, so every client of the codebase is covered) injects one per
  * client when `OMG_COPILOT_CASSETTE_MODE` is set:
@@ -24,7 +24,7 @@ import type { LoadedSdk } from '../copilot-sdk-driver.js';
 import { type Cassette, type CassetteResponse } from './cassette.js';
 import { type LiveRequest, type MatchMode } from './matcher.js';
 import { type PlaceholderDirs, type RedactionIdentity } from './redact.js';
-/** What the SDK hands each hook (`CopilotRequestContext`, SDK 1.0.16). */
+/** What the SDK hands each hook (`CopilotRequestContext`, unchanged from SDK 1.0.16 through 2.0.3). */
 export interface CopilotRequestContextLike {
     requestId?: string;
     sessionId?: string;
@@ -55,7 +55,7 @@ export interface CassetteConfig {
     /** `OMG_COPILOT_CASSETTE_DIRS`: placeholder dirs on top of TMP and USERHOME. */
     dirs?: PlaceholderDirs;
 }
-export declare const REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
+export declare const REQUEST_HANDLER_MISSING = "replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)";
 /** Per-client recordings, `<state>/parts/<pid>-<n>`, merged by the smoke. */
 export declare const RECORD_PARTS_DIR = "parts";
 /** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */

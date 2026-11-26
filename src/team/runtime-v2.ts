@@ -1514,7 +1514,7 @@ export interface StartTeamV2Config {
    * passes `auto`; programmatic callers keep the historical `pane`.
    */
   defaultTransport?: TeamTransportSetting;
-  /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`); a string is a protocol mismatch. */
+  /** Test seam: whether `@microsoft/copilot-sdk` resolves (only asked for `auto`); a string is a protocol mismatch. */
   sdkAvailable?: () => Promise<boolean | string>;
 }
 
@@ -2222,7 +2222,7 @@ export interface TeamTransportDecision {
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * turns), `@microsoft/copilot-sdk` not installed, or an SDK whose protocol the
  * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export async function resolveTeamTransport(input: {

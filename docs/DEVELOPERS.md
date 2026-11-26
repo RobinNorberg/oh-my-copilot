@@ -29,7 +29,7 @@ Use `--keep-home` to keep the temp homes and project for debugging, and `--json`
 
 ### From vitest
 
-`npm run test:live` runs `tests/live/copilot-smoke.test.ts`. Tier 0 runs whenever the binary resolves and skips otherwise. Tier 1 runs only with `OMC_LIVE_SMOKE=1`, so it never spends a request by accident. The free tier 2 static checks run whenever the binary and `@github/copilot-sdk` resolve. The tier 2 default scenarios run only with `OMC_LIVE_SMOKE=2`. The default `npm test` run and CI exclude `tests/live/**`.
+`npm run test:live` runs `tests/live/copilot-smoke.test.ts`. Tier 0 runs whenever the binary resolves and skips otherwise. Tier 1 runs only with `OMC_LIVE_SMOKE=1`, so it never spends a request by accident. The free tier 2 static checks run whenever the binary and `@microsoft/copilot-sdk` resolve. The tier 2 default scenarios run only with `OMC_LIVE_SMOKE=2`. The default `npm test` run and CI exclude `tests/live/**`.
 
 ### From Claude Code (MCP tool `host_smoke`)
 
@@ -68,14 +68,14 @@ Then, for example:
 { "tool": "copilot_run_cleanup", "arguments": { "jobId": "<jobId from start>" } }
 ```
 
-Each job lands in the budget ledger as `copilot-run:<jobId>`; the budget only reports and never refuses a job. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
+Each job lands in the budget ledger as `copilot-run:<jobId>`; the budget only reports and never refuses a job. It needs `@microsoft/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
 
 ### Tier 2 — SDK scenarios
 
-Tier 2 drives Copilot through `@github/copilot-sdk` instead of `copilot -p`. The SDK sees the full event stream and the runtime's own plugin, skill, agent, and MCP lists, so it can assert behaviour that tier 1 cannot: a guardrail deny, a skill invocation, a delegation.
+Tier 2 drives Copilot through `@microsoft/copilot-sdk` (SDK v2, protocol 4, Copilot CLI 1.0.113 or newer; tested: SDK 2.0.3 with CLI 1.0.116) instead of `copilot -p`. The SDK sees the full event stream and the runtime's own plugin, skill, agent, and MCP lists, so it can assert behaviour that tier 1 cannot: a guardrail deny, a skill invocation, a delegation.
 
 ```bash
-npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
 omg smoke copilot --sdk-static                # free: SDK static checks, no model call
 omg smoke copilot --tier 2                    # smoke + guardrail, one prompt each (0.34 + 0.29 AI credits measured)
 omg smoke copilot --tier 2 --scenario all     # adds skill + delegate
@@ -89,21 +89,21 @@ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events  # opt-
 omg smoke copilot --tier 2 --scenario ultragoal  # opt-in, pending lane g-cont: ~0.65 AI credits
 ```
 
-**Install.** The SDK is optional and not declared in `package.json`, so `npm i -g oh-my-copilot` never installs it. Install it next to `omg` with the command above. `--ignore-scripts` is required on Windows with `--omit=optional`, because koffi's install script otherwise falls back to a source build that needs CMake. Without the SDK every `sdk.*` check fails with that install hint and the run exits `2`.
+**Install.** The SDK is optional and not declared in `package.json`, so `npm i -g oh-my-copilot` never installs it. Install it next to `omg` with the command above. `--ignore-scripts` skips koffi's install script, which only SDK v2's in-process runtime needs and which can fall back to a source build that needs CMake on Windows. Without the SDK every `sdk.*` check fails with that install hint and the run exits `2`. SDK v1 (`@github/copilot-sdk`) is not loaded any more; remove it with `npm uninstall -g @github/copilot-sdk` (see [MIGRATION.md](./MIGRATION.md#unreleased-copilot-sdk-v2-microsoftcopilot-sdk)).
 
-**Bundled runtime.** A global install can still pull the SDK's platform runtime, about 128 MB, despite `--omit=optional`. It lands nested at `<npm root -g>/@github/copilot-sdk/node_modules/@github/copilot-sdk-<platform>`. Delete that folder if it appears; tier 2 never uses it. The lean alternative is a project-local install in the plugin root, which the spike measured at 11 MB:
+**Bundled runtime.** A global install pulls the SDK's platform runtime, about 200 MB for SDK 2.0.3 on win32-x64: npm ignores `--omit=optional` for a global install (npm 11). It lands nested at `<npm root -g>/@microsoft/copilot-sdk/node_modules/@microsoft/copilot-sdk-<platform>`. Delete that folder if you like; tier 2 never uses it. A project-local install in the plugin root does honour `--omit=optional`:
 
 ```bash
-npm i --no-save --omit=optional --ignore-scripts @github/copilot-sdk
+npm i --no-save --omit=optional --ignore-scripts @microsoft/copilot-sdk@2
 ```
 
-**Installed-exe policy.** Tier 2 always connects the SDK to the installed `copilot` binary, resolved exactly as for tier 0 and 1. It never uses the SDK's bundled runtime, because the installed CLI is what users run and plugin loading differs between the two. `sdk.runtime` checks that the runtime reports the tier 0 binary version and protocol 3 or later.
+**Installed-exe policy.** Tier 2 always connects the SDK to the installed `copilot` binary, resolved exactly as for tier 0 and 1, and spawns it as a child process (`RuntimeConnection.forSpawnedStdio`). It never uses the SDK's bundled runtime or SDK v2's default in-process host, because the installed CLI is what users run, plugin loading differs between the two, and the factory needs the runtime's own process (pid, args, env, sandbox). `sdk.runtime` checks that the runtime reports the tier 0 binary version and protocol 4 or later.
 
 **Scenarios.** `smoke` and `guardrail` are the default; `--scenario` takes a comma-separated list or `all`. Each scenario runs in its own session in a temp git repo with an isolated `COPILOT_HOME`, a per-scenario timeout, and its full event stream kept as `artifacts.events.<name>`. `scn.<name>.cost` reports AI credits and the legacy premium requests. `chain` is the exception: it is opt-in (never in `all`), uses no SDK session, and spawns two real `copilot -p` factory links that hand off through `OMC_CHAIN_LINK` and the SessionEnd worker (see [REFERENCE.md](./REFERENCE.md#factory-chains-on-copilot)). Its links run without `--max-ai-credits`, so `--max-credits` does not bound them, and a link-2 process still running after the timeout is not killed.
 
 **The `team` scenario.** Also opt-in and outside `all`. It runs the plugin's own `bridge/cli.cjs` as child processes, so it proves the default transport end to end:
 
-1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits.
+1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits. The workers run on the session's model (`OMC_TEAM_SDK_MODEL`): `--model`, a cassette's pinned model, else the cheap model the driver picked. Only when the runtime lists no cheap model do they fall back to `team.sdk.model`, else runtime auto, which measured 20.7 AI credits over the two workers on Copilot CLI 1.0.116 and fails `credits`.
 2. `omg team status --json` is polled until both tasks settle. Then `omg team api list-tasks` and each worker worktree's commits are read.
 3. `omg team shutdown`, while each worker's `sdk-session.json` is polled for the final `session.shutdown` totals.
 
@@ -163,7 +163,7 @@ The `smoke` job in `.github/workflows/ci.yml` runs the smoke on `ubuntu-latest` 
 
 **OS sandbox.** The job installs `bubblewrap`, `slirp4netns` and `uidmap` with apt, which Copilot's Linux sandbox needs, so `sdk.sandbox` should report `supported` and `--scenario sandbox-lane` runs enforced lanes. When the static run's `sdk.sandbox` does not report `supported`, the step adds a warning annotation. It does not fail the job, because an unsupported host fails closed.
 
-**Install.** The job runs `npm i -g @github/copilot`, the CLI's documented npm install. Its `copilot` bin is a node loader that runs the native binary from the `@github/copilot-linux-x64` optional dependency. The SDK is installed with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`, so its bundled runtime is never downloaded; the installed-exe policy above applies unchanged. The job builds first, because a PR branch need not carry rebuilt bundles.
+**Install.** The job runs `npm i -g @github/copilot`, the CLI's documented npm install. Its `copilot` bin is a node loader that runs the native binary from the `@github/copilot-linux-x64` optional dependency. The SDK is installed with `npm i -g --ignore-scripts @microsoft/copilot-sdk@$SMOKE_SDK_VERSION`; its platform runtime is downloaded but never loaded, and the installed-exe policy above applies unchanged. The job pins the pair: `SMOKE_SDK_VERSION` (2.0.3) and `SMOKE_CLI_VERSION` (1.0.116) move together, because an SDK and a CLI on different protocols fail the handshake. The job builds first, because a PR branch need not carry rebuilt bundles.
 
 **Secret.** Add a repository secret named `COPILOT_GITHUB_TOKEN` under Settings, Secrets and variables, Actions. Its value is a fine-grained personal access token of a user with an active Copilot subscription, with the account permission "Copilot Requests" (see "Authenticate with a Personal Access Token" in the `@github/copilot` README). Create it at <https://github.com/settings/personal-access-tokens/new>. It needs no repository permissions. AI Credits are billed to that user.
 
@@ -283,7 +283,7 @@ Every upstream event is projected. `FORK_HOOKS` in `build-hooks.mjs` adds Copilo
 
 `team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1` or `true` turns it on, `0` or `false` turns it off, any case; any other value is an `invalid_team_sdk_config` error; default off) makes each sdk team host register the plugin MCP tools as SDK session tools (`SessionConfig.tools`) and disable the `t` server for its session (`disabledMcpServers`). The session then starts no `node bridge/mcp-server.cjs` child, and the tools run in the host process.
 
-**Capability.** `@github/copilot-sdk` 1.0.16 exposes `SessionConfig.tools: Tool[]` (`name`, `description`, JSON-schema `parameters`, `handler`, `skipPermission`) and `convertMcpCallToolResult` (`dist/types.d.ts`). The runtime accepts the hyphenated `t-<tool>` names. The host builds the set without the `excludedTools` names, so `t-host_smoke` and `workerDenyTools` entries for single tools (`t(<tool>)`) stay denied. A bare server name (`workerDenyTools: ['t']`, deny every tool of the server) gives an empty set, with the `t` server still disabled. When the loaded SDK has no `convertMcpCallToolResult`, the host logs `in-process tools unavailable` and keeps the MCP server.
+**Capability.** `@github/copilot-sdk` 1.0.16 exposed `SessionConfig.tools: Tool[]` (SDK v2: `CreateSessionOptions.tools.definitions`, same `Tool` fields) (`name`, `description`, JSON-schema `parameters`, `handler`, `skipPermission`) and `convertMcpCallToolResult` (`dist/types.d.ts`). The runtime accepts the hyphenated `t-<tool>` names. The host builds the set without the `excludedTools` names, so `t-host_smoke` and `workerDenyTools` entries for single tools (`t(<tool>)`) stay denied. A bare server name (`workerDenyTools: ['t']`, deny every tool of the server) gives an empty set, with the `t` server still disabled. When the loaded SDK has no `convertMcpCallToolResult`, the host logs `in-process tools unavailable` and keeps the MCP server.
 
 **Verification.** The capability check above sees only the SDK module. After `createSession()` the host asks the session, with no model call, whether it offers `t-state_read` (`tools.getCurrentMetadata()`, built first with `tools.initializeAndValidate()` when empty). If the session lists tools but not that one, the host deletes it and creates it again on the `t` MCP server, and `tool_transport` is `mcp`. If the SDK has no metadata RPC, or the RPC fails or lists no tools, the host keeps in-process and records `tool_transport_verified: false` in `sdk-session.json`; `true` means the tool was listed, or the set is empty.
 

@@ -20,8 +20,10 @@
  * Everything runs as child processes of `node <root>/bridge/cli.cjs`, so this
  * module imports no team code; the smoke entry injects it like `chain`.
  *
- * Cost: one user prompt per worker, billed in AI credits. Each host is
- * capped at half of the run's remaining credit budget.
+ * Cost: one user prompt per worker, billed in AI credits, on the model the
+ * driver chose for the session (`--model`, a cassette's pinned model, else
+ * the cheapest-looking listed model), never runtime auto when a cheap model
+ * is listed. Each host is capped at half of the run's remaining credit budget.
  */
 import { spawn as nodeSpawn } from 'child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';

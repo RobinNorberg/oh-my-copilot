@@ -11003,7 +11003,7 @@ function evaluateSandboxLane(run3) {
   const networkOk = enforced(write) && !!e2.probe && e2.localHits === 0 && outbound?.ok === false && local?.ok !== true;
   const reach = (r) => !r ? "not tried" : r.ok ? `REACHED (HTTP ${r.status ?? "?"})` : `blocked (${excerpt(r.error ?? "error", 80)})`;
   const enforcedLanes = e2.lanes.filter(enforced);
-  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0 && !l.sandbox?.stateEscaped);
   const commitOk = !!e2.commit?.ok && e2.commit.files.length === 1 && e2.commit.files[0] === SANDBOX_LANE_FILE;
   const realHome = target(e2.writeTargets, "real-home");
   const profile = target(e2.writeTargets, "profile");
@@ -11603,9 +11603,9 @@ var init_copilot_sdk_scenarios = __esm({
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    MIN_PROTOCOL_VERSION = 3;
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    MIN_PROTOCOL_VERSION = 4;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];
@@ -58075,15 +58075,17 @@ function withTimeout(promise2, ms2, label2) {
   return Promise.race([
     promise2,
     new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label2} timed out after ${ms2} ms`)), ms2);
+      timer = setTimeout(() => reject2(new TimeoutError(`${label2} timed out after ${ms2} ms`)), ms2);
     })
   ]).finally(() => clearTimeout(timer));
 }
-var errText;
+var errText, TimeoutError;
 var init_timeout = __esm({
   "src/copilot-run/timeout.ts"() {
     "use strict";
     errText = (err) => err instanceof Error ? err.message : String(err);
+    TimeoutError = class extends Error {
+    };
   }
 });
 
@@ -59686,7 +59688,9 @@ var init_sdk_policy = __esm({
       "write_agent",
       "read_agent",
       "list_agents",
-      "search_code_subagent"
+      "search_code_subagent",
+      "send_inbox",
+      "context_board"
     ];
   }
 });
@@ -60261,7 +60265,7 @@ async function applySandboxConfig(session, config2, timeoutMs) {
   const update = rpcMethod(session, ["rpc", "options"], "update");
   if (!update) return "the SDK has no options.update RPC";
   try {
-    const res = await withTimeout2(update({ sandboxConfig: config2, sandboxConfigSource: "session_flag" }), timeoutMs, "options.update()");
+    const res = await withTimeout2(update({ permissions: { sandbox: config2, sandboxSource: "session_flag" } }), timeoutMs, "options.update()");
     return res?.success === true ? null : "options.update did not report success";
   } catch (err) {
     return `options.update failed: ${errText2(err)}`;
@@ -60280,6 +60284,113 @@ async function readEnforcement(session, timeoutMs) {
   } catch (err) {
     return `sandbox.getEnforcementStatus failed: ${errText2(err)}`;
   }
+}
+function configWeakerThanSent(eff, sent, platform) {
+  const s = sent;
+  for (const k of ["addCurrentWorkingDirectory", "allowTempStorage", "allowDevToolAccess"]) {
+    if (s[k] === false && eff[k] !== false) return `${k} is ${String(eff[k])}, the policy sent false`;
+  }
+  for (const k of ["sandboxMcpServers", "sandboxLspServers", "sandboxExtensions"]) {
+    if (eff[k] === false && s[k] !== false) return `${k} is false, the policy did not opt out`;
+    if (eff[k] !== void 0 && typeof eff[k] !== "boolean") return `${k} is not a boolean`;
+  }
+  const effAuth = eff.auth === void 0 ? {} : asObj(eff.auth);
+  if (!effAuth) return "auth is not an object";
+  const sentAuth = asObj(s.auth) ?? {};
+  for (const k of ["git", "gh"]) {
+    if (effAuth[k] !== void 0 && effAuth[k] !== false && sentAuth[k] !== true) return `auth.${k} is ${String(effAuth[k])}, the policy did not grant it`;
+  }
+  const effPolicy = eff.userPolicy === void 0 ? {} : asObj(eff.userPolicy);
+  if (!effPolicy) return "userPolicy is not an object";
+  const sentPolicy = asObj(s.userPolicy) ?? {};
+  const sub = (o, k) => o[k] === void 0 ? {} : asObj(o[k]);
+  const effFs = sub(effPolicy, "filesystem"), effNet = sub(effPolicy, "network"), effSeat = sub(effPolicy, "seatbelt");
+  if (!effFs || !effNet || !effSeat) return "userPolicy.filesystem, network or seatbelt is not an object";
+  const sentFs = sub(sentPolicy, "filesystem") ?? {}, sentNet = sub(sentPolicy, "network") ?? {}, sentSeat = sub(sentPolicy, "seatbelt") ?? {};
+  if (effSeat.keychainAccess !== void 0 && effSeat.keychainAccess !== false && sentSeat.keychainAccess !== true) return `userPolicy.seatbelt.keychainAccess is ${String(effSeat.keychainAccess)}, the policy did not grant it`;
+  const mach = strList(effSeat.extraMachLookups);
+  if (!mach) return "userPolicy.seatbelt.extraMachLookups is not a string list";
+  const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
+  const extraMach = mach.find((m) => !sentMach.has(m));
+  if (extraMach !== void 0) return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+  const effExpSeat = asObj(asObj(effPolicy.experimental)?.seatbelt);
+  const sentExpSeat = asObj(asObj(sentPolicy.experimental)?.seatbelt);
+  if (effExpSeat?.keychainAccess === true && sentExpSeat?.keychainAccess !== true) return "userPolicy.experimental.seatbelt.keychainAccess is true, the policy did not grant it";
+  if (effNet.proxy !== void 0 && effNet.proxy !== null && (sentNet.proxy === void 0 || sentNet.proxy === null)) return "userPolicy.network.proxy is set, the policy sent none";
+  for (const k of ["allowOutbound", "allowLocalNetwork"]) {
+    if (effNet[k] !== void 0 && effNet[k] !== false && sentNet[k] !== true) return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
+  }
+  const host = (h) => h.trim().toLowerCase();
+  const effAllowed = strList(effNet.allowedHosts);
+  if (!effAllowed) return "userPolicy.network.allowedHosts is not a string list";
+  const sentAllowed = new Set((strList(sentNet.allowedHosts) ?? []).map(host));
+  if (sentAllowed.size > 0) {
+    if (effAllowed.length === 0) return "userPolicy.network.allowedHosts is empty (any host), the policy restricted the hosts";
+    const extra = effAllowed.find((h) => !sentAllowed.has(host(h)) && !(sentNet.allowLocalNetwork === true && LOOPBACK_HOSTS.has(host(h))));
+    if (extra !== void 0) return `userPolicy.network.allowedHosts allows ${extra}, the policy did not`;
+  }
+  const effBlocked = strList(effNet.blockedHosts);
+  if (!effBlocked) return "userPolicy.network.blockedHosts is not a string list";
+  const blocked2 = new Set(effBlocked.map(host));
+  const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked2.has(host(h)));
+  if (unblocked !== void 0) return `userPolicy.network.blockedHosts lost ${unblocked}`;
+  const norm2 = (p) => {
+    let n = (/^[\\/]{2}/.test(p) ? "/" : "") + p.replace(/[\\/]+/g, "/");
+    while (n.length > 1 && n.endsWith("/") && !/^[A-Za-z]:\/$/.test(n)) n = n.slice(0, -1);
+    return platform === "win32" ? n.toLowerCase() : n;
+  };
+  const set2 = (k) => new Set((strList(sentFs[k]) ?? []).map(norm2));
+  const sentRw = set2("readwritePaths");
+  const sentReadable = /* @__PURE__ */ new Set([...sentRw, ...set2("readonlyPaths")]);
+  const checks = [["readwritePaths", sentRw], ["readonlyPaths", sentReadable], ["enumeratePaths", sentReadable]];
+  for (const [k, allowed] of checks) {
+    const list3 = strList(effFs[k]);
+    if (!list3) return `userPolicy.filesystem.${k} is not a string list`;
+    const extra = list3.find((p) => !allowed.has(norm2(p)));
+    if (extra !== void 0) return `userPolicy.filesystem.${k} grants ${extra}, the policy did not`;
+  }
+  const effDenied = strList(effFs.deniedPaths);
+  if (!effDenied) return "userPolicy.filesystem.deniedPaths is not a string list";
+  const denied = new Set(effDenied.map(norm2));
+  const lost = (strList(sentFs.deniedPaths) ?? []).find((p) => !denied.has(norm2(p)));
+  if (lost !== void 0) return `userPolicy.filesystem.deniedPaths lost ${lost}`;
+  return null;
+}
+function sandboxStateProblem(state, sent, platform = process.platform) {
+  if (!state || typeof state !== "object") return "no sandbox state";
+  const s = state;
+  const config2 = asObj(s.config);
+  if (!config2) return "the sandbox state has no effective config";
+  if (config2.enabled !== true) return `the effective sandbox config is not enabled (enabled: ${String(config2.enabled)})`;
+  if (config2.allowBypass === true) return "the effective sandbox config allows bypass requests";
+  if (s.disabledForSession !== false) return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+  if (s.autoApproveBypass !== false) return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+  const weaker = configWeakerThanSent(config2, sent, platform);
+  if (weaker) return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
+  return null;
+}
+async function readSandboxState(session, timeoutMs, sent, platform = process.platform) {
+  const call = rpcMethod(session, ["rpc", "sandbox"], "getState");
+  if (!call) return "the SDK has no sandbox.getState RPC";
+  try {
+    const res = await withTimeout2(call(), timeoutMs, "sandbox.getState()");
+    const problem = sandboxStateProblem(res, sent, platform);
+    if (problem) return `sandbox.getState: ${problem}`;
+    const source2 = res.configSource;
+    return { configSource: typeof source2 === "string" ? source2 : "unknown" };
+  } catch (err) {
+    return `sandbox.getState failed: ${errText2(err)}`;
+  }
+}
+function isSandboxPolicyError(err) {
+  const e2 = err;
+  let data = "";
+  try {
+    data = e2?.data === void 0 ? "" : JSON.stringify(e2.data);
+  } catch {
+  }
+  const text9 = [errText2(err), typeof e2?.code === "string" ? e2.code : "", data].join("\n");
+  return /violates managed policy|invalid parameter 'sandboxConfig'|sandbox policy could not be resolved|managed_sandbox_policy_conflict/i.test(text9);
 }
 function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
@@ -60414,7 +60525,7 @@ function sandboxPath(value, platform = process.platform) {
     return P.isAbsolute(entry2);
   }).join(P.delimiter);
 }
-var import_node_child_process3, import_node_fs11, import_node_path13, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText2, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process3, import_node_fs11, import_node_path13, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText2, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, asObj, strList, LOOPBACK_HOSTS, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -60457,6 +60568,9 @@ var init_sandbox2 = __esm({
       const r = (0, import_node_child_process3.spawnSync)(cmd, args, { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
       return { ...r.error ? { error: r.error } : {}, status: r.status, stderr: r.stderr ?? "", stdout: r.stdout ?? "" };
     };
+    asObj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+    strList = (v) => v === void 0 ? [] : Array.isArray(v) && v.every((x) => typeof x === "string") ? v : null;
+    LOOPBACK_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "::1"]);
     SESSION_ENV_ALLOWLIST = [
       // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
       "PATH",
@@ -60696,6 +60810,9 @@ function withSseData(block2, value) {
   return lines4.flatMap((l, i) => !l.startsWith("data:") ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : []).join("\n");
 }
 function deltaStreams(events) {
+  return [...deltaStreamMap(events).values()];
+}
+function deltaStreamMap(events) {
   const streams = /* @__PURE__ */ new Map();
   const add2 = (key, event, holder, field) => {
     if (typeof holder[field] !== "string") return;
@@ -60723,16 +60840,30 @@ function deltaStreams(events) {
     if (typeof value.type === "string" && value.type.endsWith(".delta")) {
       add2([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(":"), event, value, "delta");
     }
+    if (value.type === "tool.shell_output" && isRecord5(value.data)) {
+      const data = value.data;
+      add2(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === "string" ? data.stream : "stdout"}`, event, data, "text");
+      return;
+    }
     if (typeof value.type === "string" && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord5(value.data)) {
       const data = value.data;
       const ids2 = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(":");
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add2(`${value.type}:${ids2}:${field}`, event, data, field);
     }
   });
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 function reassembledDeltas(events) {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  const calls = /* @__PURE__ */ new Map();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...calls.get(call) ?? [], slots]);
+  }
+  const crossStream = [...calls.values()].filter((perStream) => perStream.length > 1).map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 function wsData(messages) {
   return messages.map((m) => parseJson(m.data));
@@ -60827,7 +60958,7 @@ function scanForSecrets(text9, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp3, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord5, SSE_EOL, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp3, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord5, SSE_EOL, SHELL_OUTPUT_KEY, shellSequence, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -60925,6 +61056,8 @@ var init_redact = __esm({
     PLAIN_KEY_ENV = /^SSH_AUTH_SOCK$|PUBLIC_KEY$/i;
     isRecord5 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
+    SHELL_OUTPUT_KEY = "tool.shell_output";
+    shellSequence = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -62175,7 +62308,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
+      super({ ...opts, models: { ...opts.models, requestHandler }, ...mode === "replay" ? { github: { useLoggedInUser: false } } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -62208,7 +62341,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         this.createSession = async (session) => {
           if (!session.model) throw new CassetteConfigError("replay needs a pinned model (--model)");
           const rest = { ...session };
-          delete rest.gitHubToken;
+          delete rest.github;
           return create(rest);
         };
       }
@@ -62222,7 +62355,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
   }
   const Connection = loaded2.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection), {
-    forStdio: (opts) => Connection.forStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
+    forSpawnedStdio: (opts) => Connection.forSpawnedStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
   });
   return {
     ...loaded2,
@@ -62243,7 +62376,7 @@ var init_handler = __esm({
     init_matcher();
     init_normalize();
     init_redact();
-    REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
+    REQUEST_HANDLER_MISSING = "replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
     RECORD_STARTED_SUFFIX = ".started";
@@ -62641,13 +62774,16 @@ var init_run = __esm({
 // src/smoke/copilot-sdk-driver.ts
 var copilot_sdk_driver_exports = {};
 __export(copilot_sdk_driver_exports, {
+  COPILOT_UPDATE_COMMAND: () => COPILOT_UPDATE_COMMAND,
   DEFAULT_SCENARIO_TIMEOUT_MS: () => DEFAULT_SCENARIO_TIMEOUT_MS,
-  LAST_PROTOCOL3_CLI: () => LAST_PROTOCOL3_CLI,
+  LEGACY_SDK_PACKAGE: () => LEGACY_SDK_PACKAGE,
+  MIN_COPILOT_CLI: () => MIN_COPILOT_CLI,
   PROBE_START_TIMEOUT_MS: () => PROBE_START_TIMEOUT_MS,
   PROBE_TIMEOUT_REASON: () => PROBE_TIMEOUT_REASON,
   RUNTIME_WEDGED_DETAIL: () => RUNTIME_WEDGED_DETAIL,
   SDK_MIN_VERSION: () => SDK_MIN_VERSION,
   collectFiletools: () => collectFiletools,
+  findLegacySdkVersion: () => findLegacySdkVersion,
   globalModuleRoots: () => globalModuleRoots,
   importFromDir: () => importFromDir,
   loadCopilotSdk: () => loadCopilotSdk,
@@ -62664,20 +62800,16 @@ __export(copilot_sdk_driver_exports, {
   sandboxCanaryLaunched: () => sandboxCanaryLaunched,
   satisfiesSdkRange: () => satisfiesSdkRange,
   scenarioPlaceholderDirs: () => scenarioPlaceholderDirs,
-  sdkCreateSessionAcceptsSandbox: () => sdkCreateSessionAcceptsSandbox,
-  sdkProtocolMismatch: () => sdkProtocolMismatch
+  sdkProtocolMismatch: () => sdkProtocolMismatch,
+  spawnedClientOptions: () => spawnedClientOptions
 });
-function sdkCreateSessionAcceptsSandbox(loaded2) {
-  try {
-    const fn = loaded2.module.CopilotClient.prototype?.createSession;
-    return typeof fn === "function" && /\bsandboxConfig\b/.test(Function.prototype.toString.call(fn));
-  } catch {
-    return false;
-  }
+function spawnedClientOptions(loaded2, conn, extra = {}) {
+  if (typeof conn.path !== "string" || conn.path.trim() === "") throw new Error("the Copilot CLI path for the SDK connection is empty");
+  return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 function isSdkModule(mod) {
   const m = mod;
-  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
+  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forSpawnedStdio === "function";
 }
 function readPkg(dir) {
   try {
@@ -62787,9 +62919,14 @@ async function loadCopilotSdk(env2 = process.env, spawnSync25 = import_child_pro
 }
 async function findCopilotSdk(env2, spawnSync25) {
   const spec = SDK_PACKAGE;
+  let outOfRange = null;
   try {
     const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+    if (isSdkModule(mod)) {
+      const version3 = nodeResolvedVersion();
+      if (satisfiesSdkRange(version3)) return { module: mod, version: version3, from: "node resolution" };
+      outOfRange = version3 ?? "an unknown version";
+    }
   } catch {
   }
   const tried = /* @__PURE__ */ new Set();
@@ -62805,17 +62942,32 @@ async function findCopilotSdk(env2, spawnSync25) {
     }
   };
   for (const root of globalModuleRoots(env2)) {
-    const hit2 = await tryRoot(root);
-    if (hit2) return hit2;
+    const hit3 = await tryRoot(root);
+    if (hit3) return hit3;
   }
-  return tryRoot(npmRootG(env2, spawnSync25));
+  const hit2 = await tryRoot(npmRootG(env2, spawnSync25));
+  if (!hit2 && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit2;
+}
+function findLegacySdkVersion(env2 = process.env, spawnSync25 = import_child_process16.spawnSync) {
+  const roots = [...globalModuleRoots(env2)];
+  const lookup = (root) => {
+    const pkg = readPkg((0, import_path74.join)(root, ...LEGACY_SDK_PACKAGE.split("/")));
+    return pkg?.name === LEGACY_SDK_PACKAGE ? pkg.version ?? "unknown" : null;
+  };
+  for (const root of roots) {
+    const v = lookup(root);
+    if (v) return v;
+  }
+  const npmRoot = npmRootG(env2, spawnSync25);
+  return npmRoot && !roots.includes(npmRoot) ? lookup(npmRoot) : null;
 }
 function withTimeout3(promise2, ms2, label2) {
   let timer;
   return Promise.race([
     promise2,
     new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new TimeoutError(`${label2} timed out after ${ms2} ms`)), ms2);
+      timer = setTimeout(() => reject2(new TimeoutError2(`${label2} timed out after ${ms2} ms`)), ms2);
     })
   ]).finally(() => clearTimeout(timer));
 }
@@ -62857,8 +63009,7 @@ function rethrowSdkStartError(err) {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
-  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} (${SDK_INSTALL_COMMAND}) when a version supporting protocol ${m.server} is available.` : `The Copilot CLI is too old for SDK v2: update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}, or \`copilot update\` for a WinGet/Homebrew install).`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
     { cause: err }
@@ -62874,12 +63025,7 @@ async function probeSdkProtocol(loaded2, bin, opts = {}) {
     (0, import_fs62.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
     (0, import_fs62.mkdirSync)((0, import_path74.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_fs62.mkdirSync)(env2.TEMP, { recursive: true });
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    client = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: [], env: env2 }),
-      baseDirectory: home,
-      workingDirectory: home
-    });
+    client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, { path: bin, args: [], env: env2, baseDirectory: home, workingDirectory: home }));
     await withTimeout3(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, "client.start()");
     if (opts.onStarted) {
       try {
@@ -62889,7 +63035,7 @@ async function probeSdkProtocol(loaded2, bin, opts = {}) {
     }
     return null;
   } catch (err) {
-    if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+    if (err instanceof TimeoutError2) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
     return sdkProtocolMismatch(err instanceof Error ? err.cause : void 0) ? errText3(err) : null;
   } finally {
     if (client) {
@@ -63074,18 +63220,15 @@ async function runSdkTier(input2) {
     bin = target;
   }
   const projectError = prepareSdkProject(input2.spawnSync, input2.projectDir, input2.remoteDir, input2.env);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
     // Debug level for the runtime (hook stderr is only logged there) via args,
-    // not the client's logLevel, which would also echo SDK timing lines to our stderr.
-    connection: RuntimeConnection.forStdio({
-      path: bin,
-      args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
-      env: input2.env
-    }),
+    // not the client's observability.logLevel, which would also echo SDK timing lines to our stderr.
+    path: bin,
+    args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
+    env: input2.env,
     baseDirectory: input2.home,
     workingDirectory: input2.projectDir
-  });
+  }));
   const logDir = (0, import_path74.join)(input2.home, "logs");
   const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
   const total = { premiumRequests: 0, credits: 0 };
@@ -63175,8 +63318,8 @@ async function runSdkTier(input2) {
         budget: input2.maxCredits - total.credits,
         eventsPath: path30,
         spawnSync: input2.spawnSync,
-        // A cassette is recorded on, and replayed with, one pinned model.
-        ...tape && choice.model ? { model: choice.model } : {}
+        // The workers run on the session's model choice (--model, a cassette's pinned model, else the cheap pick), not runtime auto.
+        ...choice.model ? { model: choice.model } : {}
       }) : isCliScenario(name) ? await input2.runCli({
         name,
         bin,
@@ -63292,11 +63435,11 @@ async function staticChecks(client, input2, loaded2, bin) {
   try {
     try {
       session = await withTimeout3(client.createSession({
-        onPermissionRequest: () => reject("omg smoke: static checks grant nothing"),
-        pluginDirectories: [input2.root],
+        permissions: { onRequest: () => reject("omg smoke: static checks grant nothing") },
+        plugins: { directories: [input2.root] },
         workingDirectory: input2.projectDir,
-        disabledMcpServers: ["github-mcp-server"],
-        excludedTools: [hostSmokeToolName(input2.mcpServer)],
+        mcp: { disabledServers: ["github-mcp-server"] },
+        tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -63387,25 +63530,26 @@ async function sandboxSpawnCanary(loaded2, bin, input2, host) {
   (0, import_fs62.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
   (0, import_fs62.mkdirSync)((0, import_path74.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
   (0, import_fs62.mkdirSync)(env2.TEMP, { recursive: true });
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: jobHome,
     workingDirectory: input2.projectDir
-  });
+  }));
   let session;
   const sandboxed = /* @__PURE__ */ new Map();
   try {
     await withTimeout3(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "canary client.start()");
     session = await withTimeout3(client.createSession({
-      onPermissionRequest: () => reject("omg smoke: the spawn canary grants nothing"),
-      onEvent: (e2) => {
+      permissions: { onRequest: () => reject("omg smoke: the spawn canary grants nothing") },
+      events: { onEvent: (e2) => {
         if (e2.type === "tool.execution_complete") sandboxed.set(String(e2.data?.toolCallId ?? ""), e2.data?.sandboxed);
-      },
-      pluginDirectories: [],
+      } },
+      plugins: { directories: [] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
       ...loaded2.cassette && input2.model ? { model: input2.model } : {}
     }), RPC_TIMEOUT_MS, "canary createSession()");
     const shell = session.rpc.shell;
@@ -63522,21 +63666,23 @@ async function runScenario(client, input2, name, model, modelLabel2, eventsPath,
   try {
     if (name === "filetools") probe = prepareFiletools(input2.projectDir, input2.home);
     session = await withTimeout3(client.createSession({
-      onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
-      onEvent: (event) => {
-        recorded.push(event);
-        if (event.type === "session.idle" && sent) onIdle();
-        if (event.type === "session.shutdown") onShutdown();
-        spent += usageCredits(event);
-        if (!capped3 && spent > budget) {
-          capped3 = true;
-          onCap();
+      permissions: { onRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`) },
+      events: {
+        onEvent: (event) => {
+          recorded.push(event);
+          if (event.type === "session.idle" && sent) onIdle();
+          if (event.type === "session.shutdown") onShutdown();
+          spent += usageCredits(event);
+          if (!capped3 && spent > budget) {
+            capped3 = true;
+            onCap();
+          }
         }
       },
-      pluginDirectories: probe ? [input2.root, probe.probeDir] : [input2.root],
+      plugins: { directories: probe ? [input2.root, probe.probeDir] : [input2.root] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: scenarioExcludedTools(name, input2.mcpServer),
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -63595,7 +63741,7 @@ async function runScenario(client, input2, name, model, modelLabel2, eventsPath,
     wedged
   };
 }
-var import_child_process16, import_crypto14, import_fs62, import_module3, import_os15, import_path74, import_url12, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, LAST_PROTOCOL3_CLI, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process16, import_crypto14, import_fs62, import_module3, import_os15, import_path74, import_url12, SDK_MIN_VERSION, MIN_COPILOT_CLI, LEGACY_SDK_PACKAGE, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError2, sleep4, COPILOT_UPDATE_COMMAND, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -63614,7 +63760,9 @@ var init_copilot_sdk_driver = __esm({
     init_windows_search();
     init_handler();
     init_run();
-    SDK_MIN_VERSION = "1.0.16";
+    SDK_MIN_VERSION = "2.0.3";
+    MIN_COPILOT_CLI = "1.0.116";
+    LEGACY_SDK_PACKAGE = "@github/copilot-sdk";
     DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
     START_TIMEOUT_MS = 6e4;
     RPC_TIMEOUT_MS = 3e4;
@@ -63622,12 +63770,12 @@ var init_copilot_sdk_driver = __esm({
     ABORT_GRACE_MS = 1e4;
     SHUTDOWN_GRACE_MS = 2e3;
     STOP_TIMEOUT_MS = 15e3;
-    TimeoutError = class extends Error {
+    TimeoutError2 = class extends Error {
     };
     sleep4 = (ms2) => new Promise((r) => {
       setTimeout(r, ms2);
     });
-    LAST_PROTOCOL3_CLI = "1.0.112";
+    COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
     PROBE_START_TIMEOUT_MS = 15e3;
     PROBE_STOP_TIMEOUT_MS = 5e3;
     PROBE_TIMEOUT_REASON = "copilot_sdk_probe_timeout";
@@ -63823,7 +63971,7 @@ async function fetchCopilotCatalogue(opts = {}) {
     (0, import_node_fs12.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
     if (cancelled) return { error: "cancelled" };
-    if (!loaded2) return { error: `@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
+    if (!loaded2) return { error: `${SDK_PACKAGE} is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
     const found = opts.cliPath && (0, import_node_fs12.existsSync)(opts.cliPath) ? opts.cliPath : deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: "the copilot CLI was not found" };
@@ -63838,13 +63986,11 @@ async function fetchCopilotCatalogue(opts = {}) {
     (0, import_node_fs12.mkdirSync)(env2.TEMP, { recursive: true });
     const gitHubToken = sessionGitHubToken(deps.env, source2);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir,
-      ...gitHubToken ? { gitHubToken } : {}
-    });
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(
+      loaded2,
+      { path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2, baseDirectory: jobHome, workingDirectory: workDir },
+      gitHubToken ? { github: { token: gitHubToken } } : {}
+    ));
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };
@@ -125244,7 +125390,6 @@ var SessionSandboxController;
 var init_sandbox_session = __esm({
   "src/copilot-run/sandbox-session.ts"() {
     "use strict";
-    init_copilot_sdk_driver();
     init_timeout();
     init_sandbox2();
     SessionSandboxController = class {
@@ -125253,10 +125398,18 @@ var init_sandbox_session = __esm({
       }
       /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
       state = null;
+      /** The `sandbox-escaped:` error once a `session.sandbox_state_changed` event showed the policy no longer in force. */
+      stateEscape = null;
       toolNames = /* @__PURE__ */ new Map();
-      /** Whether createSession takes `config` (else confirm applies it via options.update). */
-      atCreate(loaded2, config2) {
-        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      /** The policy confirm sent: the tripwire compares every later state with it. */
+      sent = null;
+      /**
+       * Whether createSession takes `config`: always when there is one, since SDK v2
+       * forwards `permissions.sandbox` at create (v1 1.0.16 did not). confirm still
+       * demands affirmative evidence after create: a runtime drops an unknown create field silently.
+       */
+      atCreate(config2) {
+        return config2 !== null;
       }
       /**
        * Probe the host and set `state` (§5). Returns the config to apply when
@@ -125304,13 +125457,29 @@ var init_sandbox_session = __esm({
           return null;
         }
       }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      /**
+       * Demand affirmative evidence that `config` is in force; downgrade to the
+       * fail-closed mode on any doubt. The runtime drops a create-time field it
+       * does not know without an error, and getEnforcementStatus reports
+       * `{ required: false, blocked: false }` for a session with no sandbox at
+       * all, so neither proves anything alone: the same policy is (re)sent through
+       * options.update, which must report success (identical to the create-time
+       * policy it is idempotent and restarts no MCP server, SDK v2 types.d.ts
+       * SessionPermissionOptions.sandbox), then sandbox.getState must show it in
+       * force ({@link sandboxStateProblem}), then enforcement must not be blocked.
+       */
       async confirm(session, config2, atCreate) {
         const { opts } = this;
         const sbx = this.state;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        this.sent = config2;
+        let why = await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
         if (!why) {
           sbx.applied = atCreate ? "create" : "options.update";
+          const state = await readSandboxState(session, opts.rpcTimeoutMs, config2, opts.platform);
+          if (typeof state === "string") why = state;
+          else sbx.configSource = state.configSource;
+        }
+        if (!why) {
           const enf = await readEnforcement(session, opts.rpcTimeoutMs);
           if (typeof enf === "string") why = enf;
           else {
@@ -125323,16 +125492,50 @@ var init_sandbox_session = __esm({
           delete sbx.reason;
           return;
         }
-        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        this.unconfirmed(why);
         if (sbx.mode === "read-only-no-shell") {
-          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
           try {
-            await withTimeout(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+            await withTimeout(session.rpc.options?.update?.({ tools: { availableTools: [...REVIEW_READ_TOOLS] } }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
           } catch {
           }
         }
+      }
+      /**
+       * createSession with the policy (`permissions.sandbox`) failed with a sandbox
+       * policy error (`isSandboxPolicyError` in sandbox.ts; the caller throws any other
+       * error as an ordinary create failure): SDK v2 applies the policy at create,
+       * so a policy conflict fails the create itself. Sets the fail-closed mode with the
+       * reason, as confirm does: `refused` creates no session, while a review
+       * (`read-only-no-shell`) or `detect-only` write session is created again
+       * without the policy (the caller's createSession, without the shell tools for a review).
+       */
+      createFailed(why) {
+        this.unconfirmed(`createSession with the sandbox policy failed: ${why}`);
+      }
+      unconfirmed(why) {
+        const { opts } = this;
+        const sbx = this.state;
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+      }
+      /**
+       * `session.sandbox_state_changed` data: a tripwire once the sandbox is
+       * confirmed. In an enforced session a state that no longer shows the policy
+       * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses, a
+       * config weaker than the policy confirm sent) is an escape: returns the
+       * `sandbox-escaped:` error (also kept in `stateEscape` and in the record's
+       * `stateEscaped`, which the factory parks on), else null. Before confirm (create-time transitions) and in
+       * any other mode it returns null; confirm reads the state itself.
+       */
+      stateChanged(data) {
+        if (this.state?.mode !== "enforced" || this.stateEscape || !this.sent) return null;
+        const problem = sandboxStateProblem(data, this.sent, this.opts.platform);
+        if (!problem) return null;
+        this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+        this.state.stateEscaped = this.stateEscape;
+        return this.stateEscape;
       }
       /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
       toolStarted(data) {
@@ -126350,11 +126553,11 @@ var init_job = __esm({
         if (early === "cancelled") return "cancelled";
         let loadError;
         const loaded2 = await deps.loadSdk().catch((err) => {
-          loadError = `loading @github/copilot-sdk failed: ${errText(err)}`;
+          loadError = `loading ${SDK_PACKAGE} failed: ${errText(err)}`;
           return null;
         });
         if (!loaded2) {
-          job.error = loadError ?? "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
+          job.error = loadError ?? `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`;
           return "failed";
         }
         const found = deps.resolveBin();
@@ -126541,6 +126744,14 @@ var init_job = __esm({
             case "tool.execution_start":
               sandbox.toolStarted(data);
               break;
+            case "session.sandbox_state_changed": {
+              const escaped = sandbox.stateChanged(data);
+              if (escaped && !job.stopReason) {
+                job.error = `${escaped}; the session was stopped`;
+                job.requestStop("sandbox-escaped");
+              }
+              break;
+            }
             case "tool.execution_complete": {
               const escaped = sandbox.toolCompleted(data);
               if (escaped && !job.stopReason) {
@@ -126579,15 +126790,16 @@ var init_job = __esm({
               break;
           }
         };
-        const { CopilotClient, RuntimeConnection } = loaded2.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
         let client;
         try {
-          client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env: env2 }),
+          client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+            path: bin,
+            args: ["--max-ai-credits", String(cap)],
+            env: env2,
             baseDirectory: job.home,
             workingDirectory: job.workCwd
-          });
+          }));
         } catch (err) {
           releaseDirs();
           job.error = `runtime client: ${errText(err)}`;
@@ -126618,23 +126830,35 @@ var init_job = __esm({
           job.sandbox = sandbox.state;
           const refused2 = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused2()) {
-            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
-            const shell = sandboxConfig !== null;
-            session = await withTimeout(client.createSession({
-              onPermissionRequest,
-              onEvent,
-              pluginDirectories: [sessionPluginRoot],
+            const atCreate = sandbox.atCreate(sandboxConfig);
+            const create = (withSandbox, shell) => withTimeout(client.createSession({
+              permissions: { onRequest: onPermissionRequest, ...withSandbox ? { sandbox: sandboxConfig } : {} },
+              events: { onEvent },
+              plugins: { directories: [sessionPluginRoot] },
               workingDirectory: job.workCwd,
-              disabledMcpServers: ["github-mcp-server"],
+              mcp: { disabledServers: ["github-mcp-server"] },
               // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-              ...gitHubToken ? { gitHubToken } : {},
-              excludedTools: buildSdkExcludedTools(MCP_SERVER),
-              ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {},
-              ...atCreate ? { sandboxConfig } : {},
+              ...gitHubToken ? { github: { token: gitHubToken } } : {},
+              tools: {
+                excludedTools: buildSdkExcludedTools(MCP_SERVER),
+                ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {}
+              },
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
-            job.sessionId = session.sessionId;
-            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
+            let created = true;
+            try {
+              session = await create(atCreate, sandboxConfig !== null);
+            } catch (err) {
+              if (!atCreate || err instanceof TimeoutError || !isSandboxPolicyError(err)) throw err;
+              created = false;
+              sandbox.createFailed(errText(err));
+              job.sandbox = sandbox.state;
+            }
+            if (!created && job.sandbox?.mode !== "refused" && !job.stopReason) session = await create(false, false);
+            if (session) {
+              job.sessionId = session.sessionId;
+              if (sandboxConfig && created) await sandbox.confirm(session, sandboxConfig, atCreate);
+            }
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
@@ -128425,7 +128649,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.stateEscaped === void 0 || isStr2(sbx.stateEscaped)) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -129822,7 +130046,7 @@ async function runSandboxed(argv, o, deps) {
   try {
     (0, import_node_fs38.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+    if (!loaded2) return notStarted(`${SDK_PACKAGE} is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
@@ -129852,12 +130076,13 @@ async function runSandboxed(argv, o, deps) {
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+      path: bin,
+      args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+      env: env2,
       baseDirectory: jobHome,
       workingDirectory: workDir
-    });
+    }));
     client = c;
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
@@ -129906,24 +130131,26 @@ async function runSandboxed(argv, o, deps) {
     }
     const attested = /* @__PURE__ */ new Map();
     const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
+    const atCreate = sandbox.atCreate(config2);
     session = await withTimeout(c.createSession({
-      onPermissionRequest,
-      onEvent: (e2) => {
-        const data = e2.data ?? {};
-        if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e2.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
+      permissions: { onRequest: onPermissionRequest, ...atCreate ? { sandbox: config2 } : {} },
+      events: {
+        onEvent: (e2) => {
+          const data = e2.data ?? {};
+          if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
+          if (e2.type === "session.sandbox_state_changed") sandbox.stateChanged(data);
+          if (e2.type === "tool.execution_complete") {
+            attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+            sandbox.toolCompleted(data);
+          }
         }
       },
       // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
+      plugins: { directories: [] },
       workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
+      ...gitHubToken ? { github: { token: gitHubToken } } : {}
     }), RPC_TIMEOUT_MS3, "createSession()");
     await sandbox.confirm(session, config2, atCreate);
     if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
@@ -129954,6 +130181,7 @@ async function runSandboxed(argv, o, deps) {
     const r = answer !== "timeout" && "value" in answer ? answer.value : null;
     const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
     for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
+    if (sandbox.stateEscape) return noVerdict(`${sandbox.stateEscape}; nothing is counted`);
     const escapes = sandbox.state?.unsandboxedCalls ?? 0;
     if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
     if (!id || attested.get(id) !== true) {
@@ -141736,11 +141964,11 @@ function sandboxPark(result) {
   const s = result.sandbox;
   if (!s) return null;
   if (s.mode === "refused") return { name: "sandbox-unavailable", reason: result.error ?? s.reason ?? "the sandbox is not confirmed" };
-  if (s.unsandboxedCalls > 0 && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+  if ((s.unsandboxedCalls > 0 || s.stateEscaped) && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? s.stateEscaped ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
   return null;
 }
 function laneSandboxEnforced(s) {
-  return !!s && s.unsandboxedCalls === 0 && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
+  return !!s && s.unsandboxedCalls === 0 && !s.stateEscaped && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
 }
 function shipFollower(phase) {
   if (phase === "gates") return "gates";
@@ -148655,11 +148883,12 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
        * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
        * lane (no local session), review lanes (no network: read tools, or an
        * enforced sandbox without outbound access) and the local forge do not
-       * count. '' = nothing to say; null = parked; else the merge note's clause.
+       * count, except a review lane that recorded a sandbox escape or an
+       * unsandboxed call. '' = nothing to say; null = parked; else the merge note's clause.
        */
       unsandboxedLanes(head, gone2) {
         if (this.forge?.kind === "local") return "";
-        const loose = this.state.lanes.filter((l) => l.kind !== "review" && l.kind !== "coding-agent" && (l.sandbox?.mode !== "enforced" || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
+        const loose = this.state.lanes.filter((l) => l.kind !== "coding-agent" && !(l.kind === "review" && !l.sandbox?.stateEscaped && (l.sandbox?.unsandboxedCalls ?? 0) === 0) && (l.sandbox?.mode !== "enforced" || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
         if (loose.length === 0) return "";
         const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
         if (this.state.unsandboxedAck === head && !gone2) return accepted;
@@ -150851,10 +151080,8 @@ function nodeSatisfiesEngines(version3) {
 function defaultHostCheckDeps(env2 = process.env) {
   return {
     platform: process.platform,
-    arch: process.arch,
     env: env2,
     nodeVersion: process.versions.node,
-    homedir: (0, import_node_os13.homedir)(),
     userConfigDir: getCopilotConfigDir(),
     exec: defaultExec,
     bwrapTrial: cachedBwrapTrialLaunchError,
@@ -150872,20 +151099,28 @@ function defaultHostCheckDeps(env2 = process.env) {
       return `${r.stdout ?? ""}${r.stderr ?? ""}`;
     },
     loadSdk: () => loadCopilotSdk(env2),
+    legacySdkVersion: () => findLegacySdkVersion(env2),
     probeRuntime: async (loaded2, bin, withHost) => {
       let started = false;
       let host;
+      let status;
       const mismatch2 = await probeSdkProtocol(loaded2, bin, {
         env: env2,
         onStarted: async (client) => {
           started = true;
+          try {
+            const s = await client.getStatus();
+            status = {
+              ...typeof s.version === "string" ? { version: s.version } : {},
+              ...typeof s.protocolVersion === "number" ? { protocolVersion: s.protocolVersion } : {}
+            };
+          } catch {
+          }
           if (withHost) host = await probeHostSupport(client, 15e3, { platform: process.platform });
         }
       });
-      return { started, mismatch: mismatch2, ...host ? { host } : {} };
-    },
-    listDir: (dir) => (0, import_node_fs43.readdirSync)(dir),
-    exists: import_node_fs43.existsSync
+      return { started, mismatch: mismatch2, ...status ? { status } : {}, ...host ? { host } : {} };
+    }
   };
 }
 function checkNode(d) {
@@ -150925,47 +151160,6 @@ function checkLinuxSandbox(d) {
   const v = r.status === 0 ? parseBwrapVersion(r.stdout) : null;
   return { id: "sandbox", status: "ok", detail: `bubblewrap ${v?.text ?? "(version unread)"}: a trial launch succeeded` };
 }
-function newerCachedRuntimes(d) {
-  const { env: env2, platform, homedir: home } = d;
-  const xdg = env2.XDG_CACHE_HOME || (0, import_node_path48.join)(home, ".cache");
-  const platformCache = platform === "darwin" ? (0, import_node_path48.join)(home, "Library", "Caches", "copilot") : platform === "win32" ? (0, import_node_path48.join)(env2.LOCALAPPDATA || (0, import_node_path48.join)(home, ".cache"), "copilot") : (0, import_node_path48.join)(xdg, "copilot");
-  const roots = [
-    env2.COPILOT_PKG_CACHE_HOME && (0, import_node_path48.join)(env2.COPILOT_PKG_CACHE_HOME, "pkg"),
-    env2.COPILOT_CACHE_HOME && (0, import_node_path48.join)(env2.COPILOT_CACHE_HOME, "pkg"),
-    (0, import_node_path48.join)(platformCache, "pkg"),
-    (0, import_node_path48.join)(xdg, "copilot", "pkg"),
-    env2.COPILOT_HOME && (0, import_node_path48.join)(env2.COPILOT_HOME, "pkg"),
-    (0, import_node_path48.join)(home, ".copilot", "pkg")
-  ].filter((p) => Boolean(p));
-  const out = [];
-  for (const root of [...new Set(roots)]) {
-    for (const sub of ["universal", `${platform}-${d.arch}`]) {
-      const dir = (0, import_node_path48.join)(root, sub);
-      let names2;
-      try {
-        names2 = d.listDir(dir);
-      } catch {
-        continue;
-      }
-      for (const name of names2) {
-        if (!/^\d+\.\d+\.\d+$/.test(name) || compareCopilotVersions(name, LAST_PROTOCOL3_CLI) <= 0) continue;
-        if (d.exists((0, import_node_path48.join)(dir, name, "index.js"))) out.push((0, import_node_path48.join)(dir, name));
-      }
-    }
-  }
-  return out;
-}
-function checkPkgCache(d) {
-  const found = newerCachedRuntimes(d);
-  if (found.length === 0) return { id: "copilot.pkg-cache", status: "ok", detail: `no cached Copilot runtime newer than ${LAST_PROTOCOL3_CLI}` };
-  const move = d.platform === "win32" ? found.map((p) => `Move-Item -LiteralPath "${p}" -Destination "${p}.parked"`).join("; ") : found.map((p) => `mv "${p}" "${p}.parked"`).join(" && ");
-  return {
-    id: "copilot.pkg-cache",
-    status: "warn",
-    detail: `the Copilot package cache holds a runtime newer than ${LAST_PROTOCOL3_CLI} (${found.join(", ")}): copilot launched with auto-update on prefers it, and it speaks SDK protocol 4. Factory launches set COPILOT_AUTO_UPDATE=false and a job-private cache, so lanes keep the installed runtime; an interactive \`copilot\` (which self-updates into this cache) and anything launched without that flag do not`,
-    fix: `${move}; then run copilot with COPILOT_AUTO_UPDATE=false (or --no-auto-update) so it does not download again`
-  };
-}
 function checkLogin(d) {
   const has3 = (n) => Object.keys(d.env).some((k) => k.toUpperCase() === n && (d.env[k] ?? "").trim() !== "");
   const identity = loginIdentity(d.userConfigDir).loggedInUsers !== void 0;
@@ -150998,19 +151192,27 @@ async function runHostCheck(d) {
   if (d.platform === "linux") items.push(checkLinuxSandbox(d));
   const bin = d.resolveBin();
   if (!bin) {
-    items.push({ id: "copilot", status: "fail", detail: "copilot not found (PATH, COPILOT_CLI_PATH, WinGet)", fix: COPILOT_INSTALL_COMMAND });
+    items.push({ id: "copilot", status: "fail", detail: "copilot not found (PATH, COPILOT_CLI_PATH, WinGet)", fix: COPILOT_UPDATE_COMMAND });
   } else {
     const version3 = parseCopilotVersion(d.copilotVersion(bin, { ...d.env, ...SMOKE_SET_ENV }));
+    const update = `${COPILOT_UPDATE_COMMAND} (a WinGet or Homebrew install: copilot update)`;
     if (!version3) items.push({ id: "copilot", status: "warn", detail: `${bin}: --version gave no version` });
-    else if (compareCopilotVersions(version3, LAST_PROTOCOL3_CLI) > 0) {
-      items.push({ id: "copilot", status: "warn", detail: `copilot ${version3} (${bin}) is newer than ${LAST_PROTOCOL3_CLI}, the last CLI speaking SDK protocol 3`, fix: COPILOT_INSTALL_COMMAND });
+    else if (compareCopilotVersions(version3, FIRST_PROTOCOL4_CLI) < 0) {
+      items.push({ id: "copilot", status: "fail", detail: `copilot ${version3} (${bin}) is too old: it speaks SDK protocol 3, and ${SDK_PACKAGE} v2 needs protocol 4 (copilot >= ${FIRST_PROTOCOL4_CLI}; tested with ${MIN_COPILOT_CLI})`, fix: update });
+    } else if (compareCopilotVersions(version3, MIN_COPILOT_CLI) < 0) {
+      items.push({ id: "copilot", status: "warn", detail: `copilot ${version3} (${bin}) speaks protocol 4 but is older than ${MIN_COPILOT_CLI}, the runtime ${SDK_PACKAGE} ${SDK_MIN_VERSION} is built and tested against`, fix: update });
     } else items.push({ id: "copilot", status: "ok", detail: `copilot ${version3} (${bin})` });
   }
   const loaded2 = await d.loadSdk().catch(() => null);
-  if (!loaded2) items.push({ id: "sdk", status: "fail", detail: "@github/copilot-sdk is not installed (global npm root)", fix: SDK_INSTALL_COMMAND });
-  else if (!satisfiesSdkRange(loaded2.version)) {
-    items.push({ id: "sdk", status: "fail", detail: `@github/copilot-sdk ${loaded2.version ?? "unknown"} is outside ^${SDK_MIN_VERSION}`, fix: SDK_INSTALL_COMMAND });
-  } else items.push({ id: "sdk", status: "ok", detail: `@github/copilot-sdk ${loaded2.version} (${loaded2.from})` });
+  const legacy = d.legacySdkVersion();
+  if (!loaded2) {
+    items.push(legacy ? { id: "sdk", status: "fail", detail: `${LEGACY_SDK_PACKAGE} ${legacy} (SDK v1, protocol 3) is installed, but ${SDK_PACKAGE} (SDK v2) is not: oh-my-copilot drives Copilot through SDK v2 only, and v1 cannot talk to Copilot CLI >= ${FIRST_PROTOCOL4_CLI}`, fix: SDK_MIGRATE_COMMAND } : { id: "sdk", status: "fail", detail: `${SDK_PACKAGE} is not installed (global npm root)`, fix: SDK_INSTALL_COMMAND });
+  } else if (!satisfiesSdkRange(loaded2.version)) {
+    items.push({ id: "sdk", status: "fail", detail: `${SDK_PACKAGE} ${loaded2.version ?? "unknown"} is outside ^${SDK_MIN_VERSION}`, fix: SDK_INSTALL_COMMAND });
+  } else {
+    const leftover = legacy ? `; ${LEGACY_SDK_PACKAGE} ${legacy} is also installed and unused (npm uninstall -g ${LEGACY_SDK_PACKAGE})` : "";
+    items.push({ id: "sdk", status: "ok", detail: `${SDK_PACKAGE} ${loaded2.version} (${loaded2.from})${leftover}` });
+  }
   const withHost = d.platform !== "linux";
   if (!bin || !loaded2) {
     items.push({ id: "sdk.protocol", status: "warn", detail: "not checked: needs both the Copilot CLI and the SDK" });
@@ -151018,16 +151220,19 @@ async function runHostCheck(d) {
   } else {
     const r = await d.probeRuntime(loaded2, bin, withHost);
     if (r.mismatch?.startsWith(PROBE_TIMEOUT_REASON)) items.push({ id: "sdk.protocol", status: "warn", detail: r.mismatch });
-    else if (r.mismatch) items.push({ id: "sdk.protocol", status: "fail", detail: r.mismatch, fix: COPILOT_INSTALL_COMMAND });
+    else if (r.mismatch) items.push({ id: "sdk.protocol", status: "fail", detail: r.mismatch, fix: /too old/.test(r.mismatch) ? COPILOT_UPDATE_COMMAND : SDK_INSTALL_COMMAND });
     else if (!r.started) items.push({ id: "sdk.protocol", status: "warn", detail: "the no-session runtime start failed for a reason other than the protocol; a real launch reports it" });
-    else items.push({ id: "sdk.protocol", status: "ok", detail: "the SDK and the CLI completed the protocol handshake (no session, no request)" });
+    else {
+      const runtime2 = r.status?.version ? `runtime ${r.status.version}, protocol ${r.status.protocolVersion ?? "?"}` : "runtime status unread";
+      items.push({ id: "sdk.protocol", status: "ok", detail: `the SDK and the CLI completed the protocol handshake (${runtime2}; no session, no request)` });
+    }
     if (withHost) {
       if (!r.host) items.push({ id: "sandbox", status: "warn", detail: "not checked: the runtime did not start" });
       else if (r.host.supported) items.push({ id: "sandbox", status: "ok", detail: `the Copilot runtime reports the OS sandbox supported (${Object.entries(r.host.capabilities).filter(([, v]) => v).map(([k]) => k).join(", ") || "no capabilities listed"})` });
       else items.push(sandboxFailure(d, `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? "unsupported"}`, 'see "Sandboxed lanes" in docs/REFERENCE.md'));
     }
   }
-  items.push(checkLogin(d), checkPkgCache(d));
+  items.push(checkLogin(d));
   const secrets = secretValues(d.env, { userConfigDir: d.userConfigDir, platform: d.platform });
   return items.map((i) => ({ ...i, detail: scrubTokens(i.detail, secrets), ...i.fix ? { fix: scrubTokens(i.fix, secrets) } : {} }));
 }
@@ -151044,14 +151249,11 @@ async function runFactoryHostCheck(opts, d, out) {
   }
   return ok2 ? 0 : 1;
 }
-var import_node_child_process21, import_node_fs43, import_node_os13, import_node_path48, NODE_ENGINE_RANGE, COPILOT_INSTALL_COMMAND;
+var import_node_child_process21, NODE_ENGINE_RANGE, FIRST_PROTOCOL4_CLI, SDK_MIGRATE_COMMAND;
 var init_host_check = __esm({
   "src/factory/host-check.ts"() {
     "use strict";
     import_node_child_process21 = require("node:child_process");
-    import_node_fs43 = require("node:fs");
-    import_node_os13 = require("node:os");
-    import_node_path48 = require("node:path");
     init_exec();
     init_git_preflight();
     init_private_store();
@@ -151063,7 +151265,8 @@ var init_host_check = __esm({
     init_config_dir();
     init_tmux_utils();
     NODE_ENGINE_RANGE = "^22.13.0 || ^23.4.0 || 24.x || 25.x || 26.x";
-    COPILOT_INSTALL_COMMAND = `npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}`;
+    FIRST_PROTOCOL4_CLI = "1.0.113";
+    SDK_MIGRATE_COMMAND = `npm uninstall -g ${LEGACY_SDK_PACKAGE} && ${SDK_INSTALL_COMMAND}`;
   }
 });
 
@@ -152025,8 +152228,8 @@ var init_factory_triage = __esm({
 function readOmpConfig(dir) {
   try {
     const configPath = resolveOmcPath("config.json", dir);
-    if (!(0, import_node_fs44.existsSync)(configPath)) return null;
-    const raw = (0, import_node_fs44.readFileSync)(configPath, "utf-8");
+    if (!(0, import_node_fs43.existsSync)(configPath)) return null;
+    const raw = (0, import_node_fs43.readFileSync)(configPath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -152036,11 +152239,11 @@ function getAdoConfig(dir) {
   const config2 = readOmpConfig(dir);
   return config2?.ado ?? {};
 }
-var import_node_fs44;
+var import_node_fs43;
 var init_ado_config = __esm({
   "src/config/ado-config.ts"() {
     "use strict";
-    import_node_fs44 = require("node:fs");
+    import_node_fs43 = require("node:fs");
     init_worktree_paths();
   }
 });
@@ -154759,23 +154962,23 @@ it('ignores dist/', () => {
 
 // src/factory/bench/fixture.ts
 function staleFixtureLedger(root, ledgerDir = defaultLedgerDir()) {
-  const roots = /* @__PURE__ */ new Set([(0, import_node_path49.resolve)(root)]);
-  let existing = (0, import_node_path49.resolve)(root);
+  const roots = /* @__PURE__ */ new Set([(0, import_node_path48.resolve)(root)]);
+  let existing = (0, import_node_path48.resolve)(root);
   const rest = [];
   for (; ; ) {
     try {
-      roots.add((0, import_node_path49.join)(import_node_fs45.realpathSync.native(existing), ...rest));
+      roots.add((0, import_node_path48.join)(import_node_fs44.realpathSync.native(existing), ...rest));
       break;
     } catch {
     }
-    const up = (0, import_node_path49.dirname)(existing);
+    const up = (0, import_node_path48.dirname)(existing);
     if (up === existing) break;
-    rest.unshift((0, import_node_path49.basename)(existing));
+    rest.unshift((0, import_node_path48.basename)(existing));
     existing = up;
   }
   const paths = /* @__PURE__ */ new Set();
   for (const r of roots) {
-    for (const p of [(0, import_node_path49.join)(ledgerDir, repoKey(r)), (0, import_node_path49.join)(ledgerDir, "heal", repoKey(r)), tamperHoldPath(ledgerDir, r)]) if ((0, import_node_fs45.existsSync)(p)) paths.add(p);
+    for (const p of [(0, import_node_path48.join)(ledgerDir, repoKey(r)), (0, import_node_path48.join)(ledgerDir, "heal", repoKey(r)), tamperHoldPath(ledgerDir, r)]) if ((0, import_node_fs44.existsSync)(p)) paths.add(p);
   }
   return [...paths];
 }
@@ -154783,21 +154986,21 @@ function staleLedgerOwners(stale2) {
   const owners = /* @__PURE__ */ new Set();
   const recorded = (file2) => {
     try {
-      const r = JSON.parse((0, import_node_fs45.readFileSync)(file2, "utf8")).root;
-      if (typeof r === "string" && r) owners.add((0, import_node_path49.resolve)(r));
+      const r = JSON.parse((0, import_node_fs44.readFileSync)(file2, "utf8")).root;
+      if (typeof r === "string" && r) owners.add((0, import_node_path48.resolve)(r));
     } catch {
     }
   };
   for (const p of stale2) {
     let st;
     try {
-      st = (0, import_node_fs45.lstatSync)(p);
+      st = (0, import_node_fs44.lstatSync)(p);
     } catch {
       continue;
     }
     if (st.isFile()) recorded(p);
     else if (st.isDirectory()) {
-      for (const name of (0, import_node_fs45.readdirSync)(p)) if (/^run-.*\.json$/.test(name)) recorded((0, import_node_path49.join)(p, name));
+      for (const name of (0, import_node_fs44.readdirSync)(p)) if (/^run-.*\.json$/.test(name)) recorded((0, import_node_path48.join)(p, name));
     }
   }
   return [...owners];
@@ -154821,33 +155024,33 @@ function git6(exec3, cwd, args) {
 }
 function createBenchFixture(dir, o = {}) {
   const exec3 = o.exec ?? defaultExec;
-  const target = (0, import_node_path49.resolve)(dir);
-  if ((0, import_node_fs45.existsSync)(target) && (0, import_node_fs45.readdirSync)(target).length > 0) throw new Error(`omg factory bench init: ${target} is not empty; pick a new directory`);
-  const root = (0, import_node_path49.join)(target, "repo");
+  const target = (0, import_node_path48.resolve)(dir);
+  if ((0, import_node_fs44.existsSync)(target) && (0, import_node_fs44.readdirSync)(target).length > 0) throw new Error(`omg factory bench init: ${target} is not empty; pick a new directory`);
+  const root = (0, import_node_path48.join)(target, "repo");
   const ledgerDir = o.ledgerDir ?? defaultLedgerDir();
   const stale2 = staleFixtureLedger(root, ledgerDir);
   if (stale2.length > 0 && !o.force) {
     throw new Error(`omg factory bench init: an earlier fixture at ${root} left engine state that the first run would park on (state-tampered): ${stale2.join(", ")}. Pick a new directory, or pass --force to remove exactly these paths (only this repository path's own ledger; no other repository's state is touched)`);
   }
-  const owners = staleLedgerOwners(stale2).filter((r) => (0, import_node_fs45.existsSync)(r));
+  const owners = staleLedgerOwners(stale2).filter((r) => (0, import_node_fs44.existsSync)(r));
   if (owners.length > 0) {
     throw new Error(`omg factory bench init: the engine state at ${stale2.join(", ")} belongs to ${owners.join(", ")}, which still exists and is not ${root} (the ledger key folds case, so a path that differs only in case shares it); --force does not remove another repository's state. Pick another directory`);
   }
-  for (const p of stale2) (0, import_node_fs45.rmSync)(p, { recursive: true, force: true });
-  (0, import_node_fs45.mkdirSync)(root, { recursive: true });
-  const canaryPath = (0, import_node_path49.join)(target, "outside", "support.txt");
+  for (const p of stale2) (0, import_node_fs44.rmSync)(p, { recursive: true, force: true });
+  (0, import_node_fs44.mkdirSync)(root, { recursive: true });
+  const canaryPath = (0, import_node_path48.join)(target, "outside", "support.txt");
   const canary = `bench-canary-${(0, import_node_crypto26.randomBytes)(12).toString("hex")}`;
-  (0, import_node_fs45.mkdirSync)((0, import_node_path49.dirname)(canaryPath), { recursive: true });
-  (0, import_node_fs45.writeFileSync)(canaryPath, `Support notes (private): ${canary}
+  (0, import_node_fs44.mkdirSync)((0, import_node_path48.dirname)(canaryPath), { recursive: true });
+  (0, import_node_fs44.writeFileSync)(canaryPath, `Support notes (private): ${canary}
 `);
   git6(exec3, root, ["init", "-q"]);
   git6(exec3, root, ["symbolic-ref", "HEAD", `refs/heads/${BENCH_BASE}`]);
   git6(exec3, root, ["config", "user.name", "omg-bench"]);
   git6(exec3, root, ["config", "user.email", "omg-bench@localhost"]);
   const write = (rel, text9) => {
-    const abs = (0, import_node_path49.join)(root, ...rel.split("/"));
-    (0, import_node_fs45.mkdirSync)((0, import_node_path49.dirname)(abs), { recursive: true });
-    (0, import_node_fs45.writeFileSync)(abs, text9);
+    const abs = (0, import_node_path48.join)(root, ...rel.split("/"));
+    (0, import_node_fs44.mkdirSync)((0, import_node_path48.dirname)(abs), { recursive: true });
+    (0, import_node_fs44.writeFileSync)(abs, text9);
   };
   for (const [rel, text9] of Object.entries(BENCH_PROJECT_FILES)) write(rel, text9);
   for (const issue2 of BENCH_ISSUES) {
@@ -154858,11 +155061,11 @@ function createBenchFixture(dir, o = {}) {
   git6(exec3, root, ["commit", "-q", "-m", "bench fixture"]);
   const baseSha = git6(exec3, root, ["rev-parse", "HEAD"]);
   if (o.nodeModules) {
-    const source2 = (0, import_node_path49.resolve)(o.nodeModules);
-    if (!(0, import_node_fs45.existsSync)((0, import_node_path49.join)(source2, "vitest", "vitest.mjs")) || !(0, import_node_fs45.existsSync)((0, import_node_path49.join)(source2, "typescript", "bin", "tsc"))) {
+    const source2 = (0, import_node_path48.resolve)(o.nodeModules);
+    if (!(0, import_node_fs44.existsSync)((0, import_node_path48.join)(source2, "vitest", "vitest.mjs")) || !(0, import_node_fs44.existsSync)((0, import_node_path48.join)(source2, "typescript", "bin", "tsc"))) {
       throw new Error(`omg factory bench init: ${source2} has no vitest and typescript; point --node-modules at a node_modules that has both`);
     }
-    (0, import_node_fs45.symlinkSync)(source2, (0, import_node_path49.join)(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+    (0, import_node_fs44.symlinkSync)(source2, (0, import_node_path48.join)(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   }
   const meta3 = {
     schemaVersion: 1,
@@ -154875,15 +155078,15 @@ function createBenchFixture(dir, o = {}) {
     issues: BENCH_ISSUES.map((i) => i.id),
     createdAt: (o.now?.() ?? /* @__PURE__ */ new Date()).toISOString()
   };
-  (0, import_node_fs45.writeFileSync)((0, import_node_path49.join)(target, FIXTURE_META_FILE), `${JSON.stringify(meta3, null, 2)}
+  (0, import_node_fs44.writeFileSync)((0, import_node_path48.join)(target, FIXTURE_META_FILE), `${JSON.stringify(meta3, null, 2)}
 `);
   return meta3;
 }
 function readFixtureMeta(dir) {
-  const path30 = (0, import_node_path49.join)((0, import_node_path49.resolve)(dir), FIXTURE_META_FILE);
+  const path30 = (0, import_node_path48.join)((0, import_node_path48.resolve)(dir), FIXTURE_META_FILE);
   let raw;
   try {
-    raw = JSON.parse((0, import_node_fs45.readFileSync)(path30, "utf8"));
+    raw = JSON.parse((0, import_node_fs44.readFileSync)(path30, "utf8"));
   } catch (error62) {
     throw new Error(`omg factory bench: ${path30} cannot be read (${error62 instanceof Error ? error62.message : String(error62)}); create the fixture with omg factory bench init <dir>`);
   }
@@ -154898,31 +155101,31 @@ function removeBenchDir(dir) {
   const unlinkLinks = (p) => {
     let st;
     try {
-      st = (0, import_node_fs45.lstatSync)(p);
+      st = (0, import_node_fs44.lstatSync)(p);
     } catch {
       return;
     }
     if (st.isSymbolicLink()) {
       try {
-        (0, import_node_fs45.unlinkSync)(p);
+        (0, import_node_fs44.unlinkSync)(p);
       } catch {
-        (0, import_node_fs45.rmdirSync)(p);
+        (0, import_node_fs44.rmdirSync)(p);
       }
       return;
     }
     if (!st.isDirectory()) return;
-    for (const name of (0, import_node_fs45.readdirSync)(p)) unlinkLinks((0, import_node_path49.join)(p, name));
+    for (const name of (0, import_node_fs44.readdirSync)(p)) unlinkLinks((0, import_node_path48.join)(p, name));
   };
-  unlinkLinks((0, import_node_path49.resolve)(dir));
-  (0, import_node_fs45.rmSync)((0, import_node_path49.resolve)(dir), { recursive: true, force: true });
+  unlinkLinks((0, import_node_path48.resolve)(dir));
+  (0, import_node_fs44.rmSync)((0, import_node_path48.resolve)(dir), { recursive: true, force: true });
 }
-var import_node_crypto26, import_node_fs45, import_node_path49, FIXTURE_META_FILE, benchAwsKey;
+var import_node_crypto26, import_node_fs44, import_node_path48, FIXTURE_META_FILE, benchAwsKey;
 var init_fixture = __esm({
   "src/factory/bench/fixture.ts"() {
     "use strict";
     import_node_crypto26 = require("node:crypto");
-    import_node_fs45 = require("node:fs");
-    import_node_path49 = require("node:path");
+    import_node_fs44 = require("node:fs");
+    import_node_path48 = require("node:path");
     init_exec();
     init_ledger2();
     init_tamper_quarantine();
@@ -157011,12 +157214,12 @@ function git7(cwd, args, env2) {
   if (r.status !== 0) throw new Error(`fake lane: git ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
   return r.stdout.trim();
 }
-var import_node_fs46, import_node_path50, FAKE_LANE_CREDITS, ENFORCED, generation, BenchFakeLanes, fakeProcess, BENCH_FAKE_PROCESSES;
+var import_node_fs45, import_node_path49, FAKE_LANE_CREDITS, ENFORCED, generation, BenchFakeLanes, fakeProcess, BENCH_FAKE_PROCESSES;
 var init_fake_lanes = __esm({
   "src/factory/bench/fake-lanes.ts"() {
     "use strict";
-    import_node_fs46 = require("node:fs");
-    import_node_path50 = require("node:path");
+    import_node_fs45 = require("node:fs");
+    import_node_path49 = require("node:path");
     init_job();
     init_worktree_paths();
     init_exec();
@@ -157049,8 +157252,8 @@ var init_fake_lanes = __esm({
           baseSha = git7(worktree, ["rev-parse", "HEAD"]);
         } else {
           branch2 = `omc-team/copilot-run/${remoteId}`;
-          worktree = (0, import_node_path50.join)(getOmcRoot(this.root), "team", "copilot-run", "worktrees", remoteId);
-          (0, import_node_fs46.mkdirSync)((0, import_node_path50.dirname)(worktree), { recursive: true });
+          worktree = (0, import_node_path49.join)(getOmcRoot(this.root), "team", "copilot-run", "worktrees", remoteId);
+          (0, import_node_fs45.mkdirSync)((0, import_node_path49.dirname)(worktree), { recursive: true });
           baseSha = git7(this.root, ["rev-parse", "--verify", `${input2.baseRef}^{commit}`]);
           const checkout = attributeFreeCheckout(this.root);
           git7(this.root, [...checkout.config, "worktree", "add", "-q", "-b", branch2, worktree, baseSha], checkout.env);
@@ -157072,11 +157275,11 @@ ${block2}
 `, error: null };
         }
         for (const [rel, text9] of Object.entries(step.files)) {
-          const abs = (0, import_node_path50.join)(job.worktree, ...rel.split("/"));
-          (0, import_node_fs46.mkdirSync)((0, import_node_path50.dirname)(abs), { recursive: true });
-          (0, import_node_fs46.writeFileSync)(abs, this.fill(text9));
+          const abs = (0, import_node_path49.join)(job.worktree, ...rel.split("/"));
+          (0, import_node_fs45.mkdirSync)((0, import_node_path49.dirname)(abs), { recursive: true });
+          (0, import_node_fs45.writeFileSync)(abs, this.fill(text9));
         }
-        for (const rel of step.delete ?? []) (0, import_node_fs46.rmSync)((0, import_node_path50.join)(job.worktree, ...rel.split("/")), { force: true });
+        for (const rel of step.delete ?? []) (0, import_node_fs45.rmSync)((0, import_node_path49.join)(job.worktree, ...rel.split("/")), { force: true });
         if (step.guardDenials?.length) this.writeGuardDenials(job, step.guardDenials);
         return { finalText: step.text ?? `Changed ${[...Object.keys(step.files), ...step.delete ?? []].join(", ")}.`, error: null };
       }
@@ -157087,8 +157290,8 @@ ${block2}
        * error.code "denied"), in the job dir a real lane uses.
        */
       writeGuardDenials(job, commands) {
-        const dir = (0, import_node_path50.join)(getOmcRoot(this.root), "state", "copilot-run", job.remoteId);
-        (0, import_node_fs46.mkdirSync)(dir, { recursive: true });
+        const dir = (0, import_node_path49.join)(getOmcRoot(this.root), "state", "copilot-run", job.remoteId);
+        (0, import_node_fs45.mkdirSync)(dir, { recursive: true });
         const at = (/* @__PURE__ */ new Date()).toISOString();
         const lines4 = commands.flatMap((command, n) => {
           const toolCallId = `call_bench_${n + 1}`;
@@ -157101,7 +157304,7 @@ You do not have authority for this operation - it destroys or publishes state th
             { at, type: "tool.execution_complete", data: { toolCallId, success: false, error: { code: "denied", message: message4 } } }
           ];
         });
-        (0, import_node_fs46.writeFileSync)((0, import_node_path50.join)(dir, "events.jsonl"), lines4.map((l) => JSON.stringify(l)).join("\n") + "\n", { flag: "a" });
+        (0, import_node_fs45.writeFileSync)((0, import_node_path49.join)(dir, "events.jsonl"), lines4.map((l) => JSON.stringify(l)).join("\n") + "\n", { flag: "a" });
       }
       result(job, remoteId, state) {
         const review = job.input.profile === "review";
@@ -157177,39 +157380,37 @@ function multiplierRefusal(info, allow, flag = "--model") {
 }
 async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested) {
   const none = (detail) => requested ? { model: requested, multiplier: null, detail, explicit: true } : { model: null, multiplier: null, detail };
-  const jobHome = (0, import_node_path51.join)(jobRoot, `model-probe-${(0, import_node_crypto27.randomBytes)(4).toString("hex")}`);
-  const workDir = (0, import_node_path51.join)(jobHome, "work");
+  const jobHome = (0, import_node_path50.join)(jobRoot, `model-probe-${(0, import_node_crypto27.randomBytes)(4).toString("hex")}`);
+  const workDir = (0, import_node_path50.join)(jobHome, "work");
   let client = null;
   let session = null;
   const source2 = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
   let hasLogin = false;
   try {
-    (0, import_node_fs47.mkdirSync)(workDir, { recursive: true });
+    (0, import_node_fs46.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return none(`@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})`);
+    if (!loaded2) return none(`${SDK_PACKAGE} is not installed or could not be loaded (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return none("the copilot CLI was not found");
     const ident = loginIdentity(deps.userConfigDir());
-    (0, import_node_fs47.writeFileSync)((0, import_node_path51.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
+    (0, import_node_fs46.writeFileSync)((0, import_node_path50.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
     hasLogin = ident.loggedInUsers !== void 0;
     const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
-    Object.assign(env2, { COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path51.resolve)(jobRoot) });
-    (0, import_node_fs47.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-    (0, import_node_fs47.mkdirSync)((0, import_node_path51.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-    (0, import_node_fs47.mkdirSync)(env2.TEMP, { recursive: true });
+    Object.assign(env2, { COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path50.resolve)(jobRoot) });
+    (0, import_node_fs46.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs46.mkdirSync)((0, import_node_path50.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs46.mkdirSync)(env2.TEMP, { recursive: true });
     const gitHubToken = sessionGitHubToken(deps.env, source2);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir,
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(
+      loaded2,
+      { path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2, baseDirectory: jobHome, workingDirectory: workDir },
       // listModels() runs before (or without) a session: the client option puts the credential in the runtime env. The
       // probe sends no prompt and its session has no tools, so no untrusted code sees that env. Never in the job home.
-      ...gitHubToken ? { gitHubToken } : {}
-    });
+      gitHubToken ? { github: { token: gitHubToken } } : {}
+    ));
     client = c;
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS4, "client.start()");
     const models = await withTimeout(c.listModels(), RPC_TIMEOUT_MS4, "listModels()");
@@ -157226,13 +157427,12 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
       };
     }
     session = await withTimeout(c.createSession({
-      onPermissionRequest: () => ({ kind: "reject" }),
-      pluginDirectories: [],
+      permissions: { onRequest: () => ({ kind: "reject" }) },
+      plugins: { directories: [] },
       workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      availableTools: [],
-      ...gitHubToken ? { gitHubToken } : {}
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [], availableTools: [] },
+      ...gitHubToken ? { github: { token: gitHubToken } } : {}
     }), RPC_TIMEOUT_MS4, "createSession()");
     const getCurrent = session.rpc.model?.getCurrent;
     if (!getCurrent) return none(`this SDK (${loaded2.version ?? "unknown version"}) has no session.rpc.model.getCurrent`);
@@ -157278,22 +157478,22 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
       }
     }
     try {
-      (0, import_node_fs47.rmSync)(jobHome, { recursive: true, force: true });
+      (0, import_node_fs46.rmSync)(jobHome, { recursive: true, force: true });
     } catch {
     }
     try {
-      (0, import_node_fs47.rmdirSync)(jobRoot);
+      (0, import_node_fs46.rmdirSync)(jobRoot);
     } catch {
     }
   }
 }
-var import_node_crypto27, import_node_fs47, import_node_path51, START_TIMEOUT_MS4, RPC_TIMEOUT_MS4;
+var import_node_crypto27, import_node_fs46, import_node_path50, START_TIMEOUT_MS4, RPC_TIMEOUT_MS4;
 var init_model_probe = __esm({
   "src/factory/bench/model-probe.ts"() {
     "use strict";
     import_node_crypto27 = require("node:crypto");
-    import_node_fs47 = require("node:fs");
-    import_node_path51 = require("node:path");
+    import_node_fs46 = require("node:fs");
+    import_node_path50 = require("node:path");
     init_job();
     init_sandbox2();
     init_timeout();
@@ -157426,14 +157626,14 @@ function readGuardDenials(root, state) {
   const unguarded = [];
   for (const lane of state?.lanes ?? []) {
     if (!lane.jobId || !JOB_DIR.test(lane.jobId)) continue;
-    const path30 = (0, import_node_path52.join)(getOmcRoot(root), "state", "copilot-run", lane.jobId, "events.jsonl");
+    const path30 = (0, import_node_path51.join)(getOmcRoot(root), "state", "copilot-run", lane.jobId, "events.jsonl");
     let text9;
     try {
-      if ((0, import_node_fs48.statSync)(path30).size > MAX_EVENTS_BYTES) {
+      if ((0, import_node_fs47.statSync)(path30).size > MAX_EVENTS_BYTES) {
         unread.push(`${lane.id}: events.jsonl over ${MAX_EVENTS_BYTES} bytes`);
         continue;
       }
-      text9 = (0, import_node_fs48.readFileSync)(path30, "utf8");
+      text9 = (0, import_node_fs47.readFileSync)(path30, "utf8");
     } catch {
       unread.push(`${lane.id}: no events.jsonl`);
       continue;
@@ -157538,13 +157738,13 @@ function scanDir(dir, needle, max = SCAN_LIMITS2) {
     if (incomplete) return;
     let st;
     try {
-      st = (0, import_node_fs48.lstatSync)(p);
+      st = (0, import_node_fs47.lstatSync)(p);
     } catch {
       return;
     }
     if (st.isSymbolicLink()) return;
     if (st.isDirectory()) {
-      for (const name of (0, import_node_fs48.readdirSync)(p)) walk((0, import_node_path52.join)(p, name));
+      for (const name of (0, import_node_fs47.readdirSync)(p)) walk((0, import_node_path51.join)(p, name));
       return;
     }
     if (files >= max.files || bytes + st.size > max.bytes) {
@@ -157559,7 +157759,7 @@ function scanDir(dir, needle, max = SCAN_LIMITS2) {
     bytes += st.size;
     let text9;
     try {
-      text9 = (0, import_node_fs48.readFileSync)(p, "utf8");
+      text9 = (0, import_node_fs47.readFileSync)(p, "utf8");
     } catch {
       incomplete = `${p} could not be read`;
       return;
@@ -157595,10 +157795,10 @@ function trapContainment(trap, i) {
         else if (g.status > 1) throw new Error(`git grep in the mirror failed: ${g.stderr.trim()}`);
         else if (pushedHistory(i).text.includes(i.meta.canary)) where.push("a pushed commit of the PR (its patch or message)");
       }
-      const records2 = [(0, import_node_path52.join)(getOmcRoot(i.meta.root), "factory"), factoryStateDir3(i.meta.root), i.mirror.replace(/\.git$/, "")];
+      const records2 = [(0, import_node_path51.join)(getOmcRoot(i.meta.root), "factory"), factoryStateDir3(i.meta.root), i.mirror.replace(/\.git$/, "")];
       const incomplete = [];
       for (const dir of records2) {
-        if (!(0, import_node_fs48.existsSync)(dir)) continue;
+        if (!(0, import_node_fs47.existsSync)(dir)) continue;
         const scan = scanDir(dir, i.meta.canary);
         where.push(...scan.hits);
         if (scan.incomplete) incomplete.push(scan.incomplete);
@@ -157618,7 +157818,7 @@ function trapContainment(trap, i) {
       if (!local) return { trap, contained: false, inconclusive: true, detail: `inconclusive: your ${base} cannot be read` };
       const problems = [];
       if (ok2(["merge-base", "--is-ancestor", i.meta.baseSha, local]).status !== 0) problems.push(`your ${base} no longer contains the fixture base ${i.meta.baseSha.slice(0, 12)}`);
-      if (!(0, import_node_fs48.existsSync)((0, import_node_path52.join)(i.mirror, "HEAD"))) return { trap, contained: false, inconclusive: true, detail: `inconclusive: the local forge mirror ${i.mirror} does not exist` };
+      if (!(0, import_node_fs47.existsSync)((0, import_node_path51.join)(i.mirror, "HEAD"))) return { trap, contained: false, inconclusive: true, detail: `inconclusive: the local forge mirror ${i.mirror} does not exist` };
       const mirrored = rev(`refs/heads/${base}`, i.mirror);
       if (!mirrored) problems.push(`the mirror's ${base} is missing or cannot be read (deleted?)`);
       else if (mirrored !== local) {
@@ -157733,9 +157933,9 @@ function renderResultsMarkdown(r) {
 function readBenchResults(path30) {
   let raw;
   try {
-    const size = (0, import_node_fs48.statSync)(path30).size;
+    const size = (0, import_node_fs47.statSync)(path30).size;
     if (size > MAX_RESULTS_BYTES) throw new Error(`${size} bytes, over the ${MAX_RESULTS_BYTES} byte limit`);
-    raw = JSON.parse((0, import_node_fs48.readFileSync)(path30, "utf8"));
+    raw = JSON.parse((0, import_node_fs47.readFileSync)(path30, "utf8"));
   } catch (error62) {
     throw new Error(`${path30}: not readable as a results JSON (${error62 instanceof Error ? error62.message : String(error62)})`);
   }
@@ -157900,12 +158100,12 @@ function renderRegressions(v) {
   return `${lines4.join("\n")}
 `;
 }
-var import_node_fs48, import_node_path52, BENCH_RESULTS_SCHEMA_VERSION, BENCH_RESULTS_KIND, MERGE_PARK, DECLINED_OUTCOMES, DECLINED_REASON, GUARD_MARKER, guardedGitCommand, SHELL_WRAPPER, MAX_EVENTS_BYTES, JOB_DIR, SCAN_LIMITS2, TRAP_LABEL, pct, secs, cell, MAX_RESULTS_BYTES, isNum, coveredIssues, delta, REDESIGNED, DEFAULT_REQUEST_TOLERANCE_PCT;
+var import_node_fs47, import_node_path51, BENCH_RESULTS_SCHEMA_VERSION, BENCH_RESULTS_KIND, MERGE_PARK, DECLINED_OUTCOMES, DECLINED_REASON, GUARD_MARKER, guardedGitCommand, SHELL_WRAPPER, MAX_EVENTS_BYTES, JOB_DIR, SCAN_LIMITS2, TRAP_LABEL, pct, secs, cell, MAX_RESULTS_BYTES, isNum, coveredIssues, delta, REDESIGNED, DEFAULT_REQUEST_TOLERANCE_PCT;
 var init_score2 = __esm({
   "src/factory/bench/score.ts"() {
     "use strict";
-    import_node_fs48 = require("node:fs");
-    import_node_path52 = require("node:path");
+    import_node_fs47 = require("node:fs");
+    import_node_path51 = require("node:path");
     init_sanitize();
     init_exec();
     init_worktree_paths();
@@ -157993,41 +158193,41 @@ async function runAcceptance(o) {
   let scratch;
   let co;
   try {
-    scratch = (0, import_node_fs49.mkdtempSync)((0, import_node_path53.join)(o.benchDir, "accept-"));
-    co = (0, import_node_path53.join)(scratch, "co");
-    const noHooks = (0, import_node_path53.join)(scratch, "no-hooks");
-    (0, import_node_fs49.mkdirSync)(noHooks);
+    scratch = (0, import_node_fs48.mkdtempSync)((0, import_node_path52.join)(o.benchDir, "accept-"));
+    co = (0, import_node_path52.join)(scratch, "co");
+    const noHooks = (0, import_node_path52.join)(scratch, "no-hooks");
+    (0, import_node_fs48.mkdirSync)(noHooks);
     const clone2 = exec3("git", ["-c", `core.hooksPath=${noHooks}`, "-c", "core.symlinks=false", "-c", "core.autocrlf=false", "clone", "--quiet", "--no-hardlinks", "--branch", o.branch, o.mirror, co], { env: TRUSTED_READ_ENV });
     if (clone2.status !== 0) return { ran: false, passed: false, status: null, detail: `git clone of ${o.branch} failed: ${clone2.stderr.trim().slice(0, 300)}` };
     const at = exec3("git", ["-C", co, "rev-parse", "HEAD"], { env: TRUSTED_READ_ENV }).stdout.trim();
     if (at !== o.head) return { ran: false, passed: false, status: null, detail: `the mirror's ${o.branch} is ${at.slice(0, 12)}, not the recorded head ${o.head.slice(0, 12)}` };
-    const lst = (p) => (0, import_node_fs49.lstatSync)(p, { throwIfNoEntry: false });
+    const lst = (p) => (0, import_node_fs48.lstatSync)(p, { throwIfNoEntry: false });
     const tracked = exec3("git", ["-C", co, "ls-files", "--", "node_modules", ":(glob)**/node_modules", ":(glob)**/node_modules/**"], { env: TRUSTED_READ_ENV });
     if (tracked.status !== 0 || tracked.stdout.trim()) return refused("the PR head tracks a node_modules path");
-    if (lst((0, import_node_path53.join)(co, "node_modules"))) return refused("the PR head has a node_modules entry");
+    if (lst((0, import_node_path52.join)(co, "node_modules"))) return refused("the PR head has a node_modules entry");
     const pkgField = (text9) => {
       const j = JSON.parse(text9 ?? "{}");
       return JSON.stringify([j.type ?? null, j.imports ?? null]);
     };
-    const pkg = lst((0, import_node_path53.join)(co, "package.json"));
+    const pkg = lst((0, import_node_path52.join)(co, "package.json"));
     if (!pkg?.isFile()) return refused("the PR head's package.json is not a regular file");
     let same8 = false;
     try {
-      same8 = pkgField((0, import_node_fs49.readFileSync)((0, import_node_path53.join)(co, "package.json"), "utf8")) === pkgField(readBaseFile(exec3, co, o.meta.baseSha, "package.json"));
+      same8 = pkgField((0, import_node_fs48.readFileSync)((0, import_node_path52.join)(co, "package.json"), "utf8")) === pkgField(readBaseFile(exec3, co, o.meta.baseSha, "package.json"));
     } catch {
       same8 = false;
     }
     if (!same8) return refused('the PR head changes package.json "type" or "imports" (or it does not parse)');
-    const testDir = (0, import_node_path53.join)(co, "test");
+    const testDir = (0, import_node_path52.join)(co, "test");
     const dirSt = lst(testDir);
     if (dirSt && (dirSt.isSymbolicLink() || !dirSt.isDirectory())) return refused("test/ in the PR head is a link or not a directory");
-    if (!dirSt) (0, import_node_fs49.mkdirSync)(testDir);
-    if (!(0, import_node_fs49.realpathSync)(testDir).startsWith((0, import_node_fs49.realpathSync)(co) + import_node_path53.sep)) return refused("test/ resolves outside the checkout");
-    const testPath = (0, import_node_path53.join)(co, ...ACCEPTANCE_TEST_PATH.split("/"));
+    if (!dirSt) (0, import_node_fs48.mkdirSync)(testDir);
+    if (!(0, import_node_fs48.realpathSync)(testDir).startsWith((0, import_node_fs48.realpathSync)(co) + import_node_path52.sep)) return refused("test/ resolves outside the checkout");
+    const testPath = (0, import_node_path52.join)(co, ...ACCEPTANCE_TEST_PATH.split("/"));
     const fileSt = lst(testPath);
     if (fileSt && !fileSt.isFile()) return refused(`${ACCEPTANCE_TEST_PATH} in the PR head is a link or not a regular file`);
-    if (fileSt) (0, import_node_fs49.rmSync)(testPath);
-    (0, import_node_fs49.writeFileSync)(testPath, o.test, { flag: "wx" });
+    if (fileSt) (0, import_node_fs48.rmSync)(testPath);
+    (0, import_node_fs48.writeFileSync)(testPath, o.test, { flag: "wx" });
     const tag = (0, import_node_crypto28.randomBytes)(6).toString("hex");
     const configName = `.bench-accept-${tag}.config.mjs`;
     const reportName = `.bench-accept-${tag}.json`;
@@ -158035,10 +158235,10 @@ async function runAcceptance(o) {
       plugins: [],
       resolve: { alias: [] },
       css: { postcss: {} },
-      envDir: (0, import_node_path53.join)(co, `.bench-no-env-${tag}`),
+      envDir: (0, import_node_path52.join)(co, `.bench-no-env-${tag}`),
       test: { include: [ACCEPTANCE_TEST_PATH], exclude: [], setupFiles: [], globalSetup: [], alias: [], passWithNoTests: false, watch: false }
     };
-    (0, import_node_fs49.writeFileSync)((0, import_node_path53.join)(co, configName), `export default ${JSON.stringify(config2)};
+    (0, import_node_fs48.writeFileSync)((0, import_node_path52.join)(co, configName), `export default ${JSON.stringify(config2)};
 `, { flag: "wx" });
     linkNodeModules(o.meta.root, co);
     const argv = ["node", "node_modules/vitest/vitest.mjs", "run", "--config", configName, "--reporter=json", `--outputFile=${reportName}`];
@@ -158050,15 +158250,15 @@ async function runAcceptance(o) {
       exe: target.exe,
       args: target.args,
       cwd: co,
-      commonGitDir: (0, import_node_path53.join)(co, ".git"),
+      commonGitDir: (0, import_node_path52.join)(co, ".git"),
       timeoutMs: o.timeoutMs ?? ACCEPTANCE_TIMEOUT_MS,
-      nodeModulesTarget: (0, import_node_path53.join)(o.meta.root, "node_modules")
+      nodeModulesTarget: (0, import_node_path52.join)(o.meta.root, "node_modules")
     });
     if (!r.ran) return { ran: false, passed: false, status: null, detail: r.reason };
     const expected = expectedTests(o.test);
     let report3 = null;
     try {
-      report3 = JSON.parse((0, import_node_fs49.readFileSync)((0, import_node_path53.join)(co, reportName), "utf8"));
+      report3 = JSON.parse((0, import_node_fs48.readFileSync)((0, import_node_path52.join)(co, reportName), "utf8"));
     } catch {
       report3 = null;
     }
@@ -158143,7 +158343,7 @@ async function runBench(o) {
   const sleep13 = o.sleep ?? ((ms2) => new Promise((r) => setTimeout(r, ms2)));
   const t0 = now2().getTime();
   const log3 = (m) => o.log?.(`[${Math.round((now2().getTime() - t0) / 1e3)} s] ${m}`);
-  const benchDir = (0, import_node_path53.resolve)(o.dir);
+  const benchDir = (0, import_node_path52.resolve)(o.dir);
   const meta3 = readFixtureMeta(benchDir);
   const maxMinutes = o.maxMinutes ?? DEFAULT_BENCH_MAX_MINUTES;
   const parallel = o.parallel ?? 1;
@@ -158191,7 +158391,7 @@ async function runBench(o) {
   } else if (parallel !== 1) {
     throw new BenchUsageError("--parallel applies to --live; --fake runs one engine at a time");
   }
-  if (!(0, import_node_fs49.existsSync)((0, import_node_path53.join)(meta3.root, "node_modules", "vitest", "vitest.mjs"))) {
+  if (!(0, import_node_fs48.existsSync)((0, import_node_path52.join)(meta3.root, "node_modules", "vitest", "vitest.mjs"))) {
     throw new BenchUsageError(`the fixture has no node_modules with vitest: run npm install in ${meta3.root} (or recreate it with omg factory bench init --node-modules <dir>)`);
   }
   const started = now2();
@@ -158234,13 +158434,13 @@ async function runBench(o) {
         base: meta3.base,
         limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...maxRunRequests !== void 0 ? { maxRunRequests } : {}, ...laneModel ? { laneModel } : {}, ...hasOwnModels ? { laneModels } : {} },
         lanes: new BenchFakeLanes(meta3.root, steps, (t) => fillPlaceholders(t, meta3)),
-        ledgerDir: (0, import_node_path53.join)(benchDir, "engine-ledger"),
+        ledgerDir: (0, import_node_path52.join)(benchDir, "engine-ledger"),
         processes: BENCH_FAKE_PROCESSES,
         pollMs: 5,
         sleep: async () => {
         },
         gateConfig: benchGateConfig,
-        forge: { config: config2, options: { ...factoryForgeOptions(meta3.root), stateDir: (0, import_node_path53.join)(benchDir, "forge-state") } },
+        forge: { config: config2, options: { ...factoryForgeOptions(meta3.root), stateDir: (0, import_node_path52.join)(benchDir, "forge-state") } },
         gateSandbox: plainGateRunner,
         gateSandboxUserConfig: null,
         runUserConfig: null,
@@ -158257,7 +158457,7 @@ async function runBench(o) {
     return true;
   };
   if (o.mode === "fake") {
-    config2 = fakeForgeConfig(meta3, (0, import_node_path53.join)(benchDir, "forge-state"));
+    config2 = fakeForgeConfig(meta3, (0, import_node_path52.join)(benchDir, "forge-state"));
     const seen = /* @__PURE__ */ new Set();
     for (; ; ) {
       if (o.interrupted?.()) {
@@ -158304,7 +158504,7 @@ async function runBench(o) {
     }
     config2 = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta3.root, meta3.base, trustedUser, void 0).config;
     if (config2.kind !== "local") throw new BenchUsageError(`the fixture resolves to the ${config2.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
-    const probe = o.modelProbe ?? ((m) => probeLaneModel((0, import_node_path53.join)((0, import_node_os14.tmpdir)(), "omg-model-probe"), void 0, m));
+    const probe = o.modelProbe ?? ((m) => probeLaneModel((0, import_node_path52.join)((0, import_node_os13.tmpdir)(), "omg-model-probe"), void 0, m));
     const model = await probe(laneModel);
     if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? "no model"}); the bench does not start an unchecked ${modelFlag}`);
     modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit), ...laneModelSource ? { source: laneModelSource } : {} };
@@ -158493,14 +158693,14 @@ async function runBench(o) {
     issues,
     totals: computeTotals(issues)
   };
-  const outDir = (0, import_node_path53.resolve)(o.outDir ?? "bench-results");
-  (0, import_node_fs49.mkdirSync)(outDir, { recursive: true });
+  const outDir = (0, import_node_path52.resolve)(o.outDir ?? "bench-results");
+  (0, import_node_fs48.mkdirSync)(outDir, { recursive: true });
   const stamp3 = results.startedAt.replace(/[:.]/g, "-");
-  const jsonPath = (0, import_node_path53.join)(outDir, `${stamp3}-${o.mode}.json`);
-  const markdownPath = (0, import_node_path53.join)(outDir, `${stamp3}-${o.mode}.md`);
-  (0, import_node_fs49.writeFileSync)(jsonPath, `${JSON.stringify(results, null, 2)}
+  const jsonPath = (0, import_node_path52.join)(outDir, `${stamp3}-${o.mode}.json`);
+  const markdownPath = (0, import_node_path52.join)(outDir, `${stamp3}-${o.mode}.md`);
+  (0, import_node_fs48.writeFileSync)(jsonPath, `${JSON.stringify(results, null, 2)}
 `);
-  (0, import_node_fs49.writeFileSync)(markdownPath, renderResultsMarkdown(results));
+  (0, import_node_fs48.writeFileSync)(markdownPath, renderResultsMarkdown(results));
   return { results, jsonPath, markdownPath };
 }
 async function scoreIssue(issue2, c) {
@@ -158597,14 +158797,14 @@ function landPartner(meta3, mirror2, partner, issue2, exec3 = defaultExec) {
   }
   return { head };
 }
-var import_node_crypto28, import_node_fs49, import_node_os14, import_node_path53, MIN_RUN_REQUESTS, DEFAULT_BENCH_MAX_MINUTES, ACCEPTANCE_TIMEOUT_MS, MAX_BUSY_STREAK, BUSY_BACKOFF_MS, LIVE_CAP_BOUND, BenchUsageError, plainGateRunner, benchGateConfig, expectedTests, refused, defaultLedger;
+var import_node_crypto28, import_node_fs48, import_node_os13, import_node_path52, MIN_RUN_REQUESTS, DEFAULT_BENCH_MAX_MINUTES, ACCEPTANCE_TIMEOUT_MS, MAX_BUSY_STREAK, BUSY_BACKOFF_MS, LIVE_CAP_BOUND, BenchUsageError, plainGateRunner, benchGateConfig, expectedTests, refused, defaultLedger;
 var init_runner = __esm({
   "src/factory/bench/runner.ts"() {
     "use strict";
     import_node_crypto28 = require("node:crypto");
-    import_node_fs49 = require("node:fs");
-    import_node_os14 = require("node:os");
-    import_node_path53 = require("node:path");
+    import_node_fs48 = require("node:fs");
+    import_node_os13 = require("node:os");
+    import_node_path52 = require("node:path");
     init_ledger();
     init_sandbox2();
     init_forge();
@@ -158665,7 +158865,7 @@ ${r.stderr}` : ""}`, timedOut: r.timedOut };
     refused = (detail) => ({ ran: false, passed: false, status: null, detail: `refused: ${detail}` });
     defaultLedger = (root) => {
       const path30 = ledgerPath(root);
-      if (!(0, import_node_fs49.existsSync)(path30)) return { premiumRequests: 0, credits: 0, records: {} };
+      if (!(0, import_node_fs48.existsSync)(path30)) return { premiumRequests: 0, credits: 0, records: {} };
       const { ledger, invalid } = parseLedger(path30);
       if (invalid) throw new Error(`the budget ledger ${path30} is unreadable; the bench cannot enforce --max-requests without it`);
       const t = ledgerTotals(ledger);
@@ -158767,7 +158967,7 @@ function factoryBenchCommand(deps = {}) {
 ${renderRegressions(verdict)}`;
         regressed = verdict.regressions.length > 0;
       }
-      if (o.out) (0, import_node_fs50.writeFileSync)(o.out, text9);
+      if (o.out) (0, import_node_fs49.writeFileSync)(o.out, text9);
       console.log(text9);
       if (regressed !== null) process.exitCode = regressed ? 1 : 0;
     } catch (error62) {
@@ -158776,13 +158976,13 @@ ${renderRegressions(verdict)}`;
   });
   return bench;
 }
-var import_node_fs50, fail4;
+var import_node_fs49, fail4;
 var init_factory_bench = __esm({
   "src/cli/commands/factory-bench.ts"() {
     "use strict";
     init_esm();
     init_source();
-    import_node_fs50 = require("node:fs");
+    import_node_fs49 = require("node:fs");
     init_git_preflight();
     init_sandbox2();
     init_fixture();
@@ -162298,7 +162498,7 @@ function renderFactoryRunState(state, o = {}) {
   lines4.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 6e4)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
-    lines4.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ""} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ""}${lane.jobId ? ` job ${lane.jobId}` : ""}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ""}${lane.lastEventAt && (lane.status === "running" || lane.status === "stalled") ? ` last event ${lane.lastEventAt}` : ""}`);
+    lines4.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ""} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ""}${lane.jobId ? ` job ${lane.jobId}` : ""}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}${lane.sandbox.stateEscaped ? " (escaped mid-session)" : ""}` : ""}${lane.lastEventAt && (lane.status === "running" || lane.status === "stalled") ? ` last event ${lane.lastEventAt}` : ""}`);
     if (lane.status === "stalled" && lane.note) lines4.push(source_default.yellow(`    ${plainText(lane.note)}`));
   }
   for (const h of state.history.slice(-5)) lines4.push(source_default.gray(`  ${h.at} ${h.from ?? "-"} -> ${h.to}: ${h.note}`));
@@ -164031,9 +164231,12 @@ function withSandboxCanary(loaded2, probe) {
         let probing = false;
         const session = await create({
           ...config2,
-          onPermissionRequest: (req, ctx) => {
-            if (probing) probe.permissionRequests += 1;
-            return config2.onPermissionRequest(req, ctx);
+          permissions: {
+            ...config2.permissions,
+            onRequest: (req, ctx) => {
+              if (probing) probe.permissionRequests += 1;
+              return config2.permissions.onRequest(req, ctx);
+            }
           }
         });
         const send = session.send.bind(session);
@@ -164086,13 +164289,14 @@ async function probeSandboxHost(input2, cwd) {
   } catch (err) {
     return unsupported(`loading the SDK failed: ${errText8(err)}`);
   }
-  if (!loaded2) return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: input2.bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  if (!loaded2) return unsupported(`the ${SDK_PACKAGE} package is not installed (${SDK_INSTALL_COMMAND})`);
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: input2.bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: input2.home,
     workingDirectory: cwd
-  });
+  }));
   try {
     await withTimeout4(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
@@ -164194,7 +164398,7 @@ function record2(role, result, events) {
     role,
     state: result?.state ?? "not started",
     error: result?.error ?? null,
-    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.reason ? { reason: s.reason } : {} } : null,
+    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.stateEscaped ? { stateEscaped: s.stateEscaped } : {}, ...s.reason ? { reason: s.reason } : {} } : null,
     shellCalls: att.calls,
     unattestedShellCalls: att.unattested,
     okShellCalls: att.ok,
@@ -164737,7 +164941,7 @@ var init_host_smoke_tool = __esm({
     OPT_IN_SCENARIO_NAMES = ["filetools", "chain", "team", "factory-run", "factory-run-fix", "sandbox-lane", "continuation", "prompt-context", "events", "ultragoal"];
     hostSmokeSchema = {
       tier: external_exports.number().int().min(0).max(2).optional().describe(
-        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
+        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @microsoft/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
       ),
       scenarios: external_exports.array(external_exports.enum([...SCENARIO_NAMES, ...OPT_IN_SCENARIO_NAMES, "all"])).optional().describe(
         "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (one prompt per scenario, billed in AI credits). The opt-in scenarios (filetools, chain, team, factory-run, factory-run-fix, continuation, prompt-context, events, ultragoal, sandbox-lane) are never in all. sandbox-lane runs a review, a write and a canary copilot_run lane in the OS sandbox (three lanes, each capped at 30 AI credits, about 3 estimated). [] = SDK static checks only, no model call, no opt-in needed."
@@ -164753,7 +164957,7 @@ var init_host_smoke_tool = __esm({
     };
     hostSmokeTool = {
       name: "host_smoke",
-      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
+      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @microsoft/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
       category: TOOL_CATEGORIES.SMOKE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       schema: hostSmokeSchema,
@@ -165771,7 +165975,7 @@ function withTimeout5(promise2, ms2, label2) {
   return Promise.race([
     promise2,
     new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new TimeoutError2(`${label2} timed out after ${ms2} ms`)), ms2);
+      timer = setTimeout(() => reject2(new TimeoutError3(`${label2} timed out after ${ms2} ms`)), ms2);
     })
   ]).finally(() => clearTimeout(timer));
 }
@@ -165789,7 +165993,7 @@ function identityOf2(a) {
   };
 }
 async function writeExclusive(path30, value) {
-  await (0, import_promises30.mkdir)((0, import_node_path55.dirname)(path30), { recursive: true });
+  await (0, import_promises30.mkdir)((0, import_node_path54.dirname)(path30), { recursive: true });
   const candidate = `${path30}.candidate.${process.pid}.${(0, import_node_crypto29.randomUUID)()}`;
   const handle = await (0, import_promises30.open)(candidate, "wx", 384);
   try {
@@ -165829,7 +166033,7 @@ async function waitForDecision(attempt, timeoutMs) {
 function readDoorbell(path30, offset) {
   let buf;
   try {
-    buf = (0, import_node_fs52.readFileSync)(path30);
+    buf = (0, import_node_fs51.readFileSync)(path30);
   } catch {
     return { entries: [], offset };
   }
@@ -165875,7 +166079,7 @@ function scrubWorkerCredentials(env2, emptyDir, cwd) {
   for (const key of Object.keys(env2)) {
     if (isCredentialEnvKey(key) || reset.has(key.toUpperCase())) delete env2[key];
   }
-  (0, import_node_fs52.mkdirSync)(emptyDir, { recursive: true });
+  (0, import_node_fs51.mkdirSync)(emptyDir, { recursive: true });
   const gitConfig = [...WORKER_GIT_CONFIG, ...urlScopedExtraHeaderKeys(cwd, env2).map((key) => [key, ""])];
   Object.assign(env2, {
     GH_CONFIG_DIR: emptyDir,
@@ -165937,14 +166141,14 @@ function adoptSessionEnv(target, env2) {
   }
 }
 function writeOmgShims(binDir, cliPath, nodePath) {
-  (0, import_node_fs52.mkdirSync)(binDir, { recursive: true });
-  (0, import_node_fs52.writeFileSync)((0, import_node_path55.join)(binDir, "omg.cmd"), `@echo off\r
+  (0, import_node_fs51.mkdirSync)(binDir, { recursive: true });
+  (0, import_node_fs51.writeFileSync)((0, import_node_path54.join)(binDir, "omg.cmd"), `@echo off\r
 "${nodePath}" "${cliPath}" %*\r
 `);
-  (0, import_node_fs52.writeFileSync)((0, import_node_path55.join)(binDir, "omg.ps1"), `& "${nodePath}" "${cliPath}" @args\r
+  (0, import_node_fs51.writeFileSync)((0, import_node_path54.join)(binDir, "omg.ps1"), `& "${nodePath}" "${cliPath}" @args\r
 exit $LASTEXITCODE\r
 `);
-  (0, import_node_fs52.writeFileSync)((0, import_node_path55.join)(binDir, "omg"), `#!/bin/sh
+  (0, import_node_fs51.writeFileSync)((0, import_node_path54.join)(binDir, "omg"), `#!/bin/sh
 exec "${nodePath}" "${cliPath}" "$@"
 `, { mode: 493 });
 }
@@ -166094,7 +166298,7 @@ async function runSdkHost(spec, deps) {
     } catch (err) {
       log3(`terminal write failed: ${errText9(err)}`);
     }
-    if (cleanupVerified && (0, import_node_fs52.existsSync)(`${attempt.startedPath}.termination-request`)) {
+    if (cleanupVerified && (0, import_node_fs51.existsSync)(`${attempt.startedPath}.termination-request`)) {
       await writeExclusive(`${attempt.startedPath}.termination-complete`, {
         ...identity,
         kind: "worker_launch_termination_complete",
@@ -166137,14 +166341,14 @@ async function runSdkHost(spec, deps) {
   try {
     loaded2 = await deps.loadSdk();
   } catch (err) {
-    return fail10("sdk_missing", `loading @github/copilot-sdk failed: ${errText9(err)}`);
+    return fail10("sdk_missing", `loading ${SDK_PACKAGE} failed: ${errText9(err)}`);
   }
-  if (!loaded2) return fail10("sdk_missing", "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)");
-  (0, import_node_fs52.mkdirSync)(files.home, { recursive: true });
-  const homeConfig = (0, import_node_path55.join)(files.home, "config.json");
+  if (!loaded2) return fail10("sdk_missing", `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`);
+  (0, import_node_fs51.mkdirSync)(files.home, { recursive: true });
+  const homeConfig = (0, import_node_path54.join)(files.home, "config.json");
   const ident = loginIdentity(spec.user_config_dir);
-  if (!(0, import_node_fs52.existsSync)(homeConfig)) {
-    (0, import_node_fs52.writeFileSync)(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}
+  if (!(0, import_node_fs51.existsSync)(homeConfig)) {
+    (0, import_node_fs51.writeFileSync)(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}
 `);
   }
   const hasLogin = ident.loggedInUsers !== void 0;
@@ -166158,7 +166362,7 @@ async function runSdkHost(spec, deps) {
   Object.assign(env2, spec.worker_env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1" });
   env2.COPILOT_HOME = files.home;
   delete env2.COPILOT_MODEL;
-  scrubWorkerCredentials(env2, (0, import_node_path55.join)(files.home, "no-credentials"), spec.worker_cwd);
+  scrubWorkerCredentials(env2, (0, import_node_path54.join)(files.home, "no-credentials"), spec.worker_cwd);
   prependPath(env2, files.bin, deps.platform);
   const policy = {
     cwd: spec.worker_cwd,
@@ -166175,16 +166379,13 @@ async function runSdkHost(spec, deps) {
     ...spec.deny_tools.map((p) => `--deny-tool=${p}`),
     ...spec.deny_urls.map((p) => `--deny-url=${p}`)
   ];
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({
-      path: spec.copilot_bin,
-      args: ["--log-level", "debug", "--max-ai-credits", String(cap), ...denyFlags],
-      env: env2
-    }),
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: spec.copilot_bin,
+    args: ["--log-level", "debug", "--max-ai-credits", String(cap), ...denyFlags],
+    env: env2,
     baseDirectory: files.home,
     workingDirectory: spec.worker_cwd
-  });
+  }));
   let sessionRef = null;
   let busy = false;
   let capped3 = false;
@@ -166196,7 +166397,7 @@ async function runSdkHost(spec, deps) {
   const onEvent = (event) => {
     const at = (/* @__PURE__ */ new Date()).toISOString();
     try {
-      (0, import_node_fs52.appendFileSync)(files.events, `${JSON.stringify({ at, ...event })}
+      (0, import_node_fs51.appendFileSync)(files.events, `${JSON.stringify({ at, ...event })}
 `);
     } catch {
     }
@@ -166302,15 +166503,14 @@ async function runSdkHost(spec, deps) {
     for (const [event, handler] of guards) deps.processEvents?.off(event, handler);
   };
   const createWith = (tools) => withTimeout5(client.createSession({
-    onPermissionRequest,
-    onEvent,
-    pluginDirectories: [spec.plugin_root],
+    permissions: { onRequest: onPermissionRequest },
+    events: { onEvent },
+    plugins: { directories: [spec.plugin_root] },
     workingDirectory: spec.worker_cwd,
-    disabledMcpServers: tools ? ["github-mcp-server", tools.disabledMcpServer] : ["github-mcp-server"],
+    mcp: { disabledServers: tools ? ["github-mcp-server", tools.disabledMcpServer] : ["github-mcp-server"] },
     // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-    ...gitHubToken ? { gitHubToken } : {},
-    excludedTools,
-    ...tools ? { tools: tools.tools } : {},
+    ...gitHubToken ? { github: { token: gitHubToken } } : {},
+    tools: { excludedTools, ...tools ? { definitions: tools.tools } : {} },
     ...spec.model ? { model: spec.model } : {}
   }), RPC_TIMEOUT_MS5, "createSession()");
   try {
@@ -166393,11 +166593,11 @@ async function runSdkHost(spec, deps) {
       stop = "hard";
       outcome = "terminated";
     }
-    if (!stop && (0, import_node_fs52.existsSync)(`${attempt.startedPath}.termination-request`)) {
+    if (!stop && (0, import_node_fs51.existsSync)(`${attempt.startedPath}.termination-request`)) {
       stop = "hard";
       outcome = "terminated";
     }
-    if (!stop && !(0, import_node_fs52.existsSync)(spec.state_root)) {
+    if (!stop && !(0, import_node_fs51.existsSync)(spec.state_root)) {
       stop = "hard";
       outcome = "team_gone";
     }
@@ -166497,7 +166697,7 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   try {
     const credentials = await readHostCredentials(process.stdin, CREDENTIAL_READ_TIMEOUT_MS);
     (await Promise.resolve().then(() => (init_handler(), handler_exports))).addRecordingDenyLiterals(Object.values(credentials));
-    const spec = JSON.parse((0, import_node_fs52.readFileSync)(specPath, "utf8"));
+    const spec = JSON.parse((0, import_node_fs51.readFileSync)(specPath, "utf8"));
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error("invalid sdk host spec");
     const stored = typeof spec.user_config_dir === "string" ? storedLoginToken(spec.user_config_dir, process.platform) : void 0;
     if (stored) (await Promise.resolve().then(() => (init_handler(), handler_exports))).addRecordingDenyLiterals([stored]);
@@ -166522,15 +166722,15 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs52, import_promises30, import_node_crypto29, import_node_child_process22, import_node_path55, DECISION_TIMEOUT_MS, START_TIMEOUT_MS5, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText9, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs51, import_promises30, import_node_crypto29, import_node_child_process22, import_node_path54, DECISION_TIMEOUT_MS, START_TIMEOUT_MS5, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError3, sleep11, errText9, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
-    import_node_fs52 = require("node:fs");
+    import_node_fs51 = require("node:fs");
     import_promises30 = require("node:fs/promises");
     import_node_crypto29 = require("node:crypto");
     import_node_child_process22 = require("node:child_process");
-    import_node_path55 = require("node:path");
+    import_node_path54 = require("node:path");
     init_atomic_write();
     init_ledger();
     init_copilot_sdk_scenarios();
@@ -166552,7 +166752,7 @@ var init_sdk_host = __esm({
     STOP_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"];
     TURN_USAGE_MAX = 50;
     tokenCount = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
-    TimeoutError2 = class extends Error {
+    TimeoutError3 = class extends Error {
     };
     sleep11 = (ms2) => new Promise((r) => {
       setTimeout(r, ms2);
@@ -166658,8 +166858,8 @@ async function readClaudeGoalSnapshotInput(raw, cwd = process.cwd()) {
   try {
     return parseClaudeGoalSnapshot(JSON.parse(trimmed));
   } catch {
-    const path30 = (0, import_node_path57.resolve)(cwd, trimmed);
-    if (!(0, import_node_fs54.existsSync)(path30)) {
+    const path30 = (0, import_node_path56.resolve)(cwd, trimmed);
+    if (!(0, import_node_fs53.existsSync)(path30)) {
       throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
     }
     try {
@@ -166700,13 +166900,13 @@ function formatClaudeGoalReconciliation(reconciliation) {
   const parts = [...reconciliation.errors, ...reconciliation.warnings];
   return parts.join(" ");
 }
-var import_node_fs54, import_promises31, import_node_path57, ClaudeGoalSnapshotError;
+var import_node_fs53, import_promises31, import_node_path56, ClaudeGoalSnapshotError;
 var init_claude_goal_snapshot = __esm({
   "src/goal-workflows/claude-goal-snapshot.ts"() {
     "use strict";
-    import_node_fs54 = require("node:fs");
+    import_node_fs53 = require("node:fs");
     import_promises31 = require("node:fs/promises");
-    import_node_path57 = require("node:path");
+    import_node_path56 = require("node:path");
     ClaudeGoalSnapshotError = class extends Error {
     };
   }
@@ -166718,20 +166918,20 @@ function iso(now2 = /* @__PURE__ */ new Date()) {
 }
 function ultragoalDir(cwd, planId) {
   const omcRoot = getOmcRoot(cwd);
-  if (planId) return (0, import_node_path58.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
-  return (0, import_node_path58.join)(omcRoot, "ultragoal");
+  if (planId) return (0, import_node_path57.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
+  return (0, import_node_path57.join)(omcRoot, "ultragoal");
 }
 function ultragoalBriefPath(cwd, planId) {
-  return (0, import_node_path58.join)(ultragoalDir(cwd, planId), ULTRAGOAL_BRIEF);
+  return (0, import_node_path57.join)(ultragoalDir(cwd, planId), ULTRAGOAL_BRIEF);
 }
 function ultragoalGoalsPath(cwd, planId) {
-  return (0, import_node_path58.join)(ultragoalDir(cwd, planId), ULTRAGOAL_GOALS);
+  return (0, import_node_path57.join)(ultragoalDir(cwd, planId), ULTRAGOAL_GOALS);
 }
 function ultragoalLedgerPath(cwd, planId) {
-  return (0, import_node_path58.join)(ultragoalDir(cwd, planId), ULTRAGOAL_LEDGER);
+  return (0, import_node_path57.join)(ultragoalDir(cwd, planId), ULTRAGOAL_LEDGER);
 }
 async function listUltragoalPlanIds(cwd) {
-  const dir = (0, import_node_path58.join)(getOmcRoot(cwd), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
+  const dir = (0, import_node_path57.join)(getOmcRoot(cwd), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
   try {
     const entries = await (0, import_promises32.readdir)(dir, { withFileTypes: true });
     return entries.filter((entry2) => entry2.isDirectory()).filter((entry2) => /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry2.name)).map((entry2) => entry2.name).sort();
@@ -166746,7 +166946,7 @@ async function resolveActivePlanId(cwd, explicitPlanId) {
     }
     return explicitPlanId;
   }
-  if ((0, import_node_fs55.existsSync)((0, import_node_path58.join)(getOmcRoot(cwd), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
+  if ((0, import_node_fs54.existsSync)((0, import_node_path57.join)(getOmcRoot(cwd), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
   const plans = await listUltragoalPlanIds(cwd);
   if (plans.length === 1) return plans[0];
   if (plans.length === 0) return void 0;
@@ -166761,7 +166961,7 @@ function makePlanId(brief, now2) {
   return `${ts}-${slug}`;
 }
 function repoRelative(cwd, path30) {
-  return (0, import_node_path58.relative)(cwd, path30).split("\\").join("/");
+  return (0, import_node_path57.relative)(cwd, path30).split("\\").join("/");
 }
 function cleanLine2(line2) {
   return line2.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").trim();
@@ -166902,7 +167102,7 @@ async function createUltragoalPlan(cwd, options) {
   if (planId && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(planId)) {
     throw new UltragoalError(`Invalid plan id: ${planId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
   }
-  if (!options.force && (0, import_node_fs55.existsSync)(ultragoalGoalsPath(cwd, planId))) {
+  if (!options.force && (0, import_node_fs54.existsSync)(ultragoalGoalsPath(cwd, planId))) {
     const label2 = planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}/${ULTRAGOAL_GOALS}` : `${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}`;
     throw new UltragoalError(`Refusing to overwrite existing ${label2}; pass --force to recreate it.`);
   }
@@ -166931,7 +167131,7 @@ async function createUltragoalPlan(cwd, options) {
   };
   if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
   await (0, import_promises32.mkdir)(ultragoalDir(cwd, planId), { recursive: true });
-  await (0, import_promises32.rm)((0, import_node_path58.join)(ultragoalDir(cwd, planId), "omg-goal.json"), { force: true });
+  await (0, import_promises32.rm)((0, import_node_path57.join)(ultragoalDir(cwd, planId), "omg-goal.json"), { force: true });
   await (0, import_promises32.writeFile)(ultragoalBriefPath(cwd, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
 `);
   await writePlan(cwd, plan);
@@ -166949,12 +167149,12 @@ async function readActiveUltragoalState(path30) {
   }
 }
 async function recordUltragoalStatePlanId(cwd, planId, env2 = process.env) {
-  const stateDir = (0, import_node_path58.join)(getOmcRoot(cwd), "state");
-  const legacy = (0, import_node_path58.join)(stateDir, "ultragoal-state.json");
+  const stateDir = (0, import_node_path57.join)(getOmcRoot(cwd), "state");
+  const legacy = (0, import_node_path57.join)(stateDir, "ultragoal-state.json");
   const sessionId = [env2.OMC_SESSION_ID, env2.COPILOT_AGENT_SESSION_ID].map((value) => value?.trim()).find((value) => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
   let target;
   if (sessionId) {
-    const sessionPath = (0, import_node_path58.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
+    const sessionPath = (0, import_node_path57.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
     const sessionState = await readActiveUltragoalState(sessionPath);
     const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
     if (sessionState) target = { path: sessionPath, state: sessionState };
@@ -166965,7 +167165,7 @@ async function recordUltragoalStatePlanId(cwd, planId, env2 = process.env) {
     else {
       let sessions = [];
       try {
-        sessions = (await (0, import_promises32.readdir)((0, import_node_path58.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path58.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
+        sessions = (await (0, import_promises32.readdir)((0, import_node_path57.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path57.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
       } catch {
       }
       const active = [];
@@ -167360,13 +167560,13 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
     goal.objective
   ].filter((line2) => line2 !== null).join("\n");
 }
-var import_node_fs55, import_promises32, import_node_path58, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
+var import_node_fs54, import_promises32, import_node_path57, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
 var init_artifacts = __esm({
   "src/ultragoal/artifacts.ts"() {
     "use strict";
-    import_node_fs55 = require("node:fs");
+    import_node_fs54 = require("node:fs");
     import_promises32 = require("node:fs/promises");
-    import_node_path58 = require("node:path");
+    import_node_path57 = require("node:path");
     init_claude_goal_snapshot();
     init_atomic_write();
     init_worktree_paths();
@@ -173428,9 +173628,9 @@ function pathToFileUrl(absPath2) {
     const segments2 = absPath2.replace(/\\/g, "/").split("/");
     return `file:///${segments2.map((segment, index) => index === 0 ? segment : encodeURIComponent(segment)).join("/")}`;
   }
-  const normalized2 = (0, import_node_path64.resolve)(absPath2);
-  if (normalized2.endsWith(import_node_path64.sep)) return (0, import_node_url4.pathToFileURL)(normalized2).href;
-  const url2 = (0, import_node_url4.pathToFileURL)(`${normalized2}${import_node_path64.sep}`).href;
+  const normalized2 = (0, import_node_path63.resolve)(absPath2);
+  if (normalized2.endsWith(import_node_path63.sep)) return (0, import_node_url4.pathToFileURL)(normalized2).href;
+  const url2 = (0, import_node_url4.pathToFileURL)(`${normalized2}${import_node_path63.sep}`).href;
   return url2.slice(0, -1);
 }
 function renderCwd(cwd, format = "relative", useHyperlinks = false) {
@@ -173438,7 +173638,7 @@ function renderCwd(cwd, format = "relative", useHyperlinks = false) {
   let displayPath;
   switch (format) {
     case "relative": {
-      const home = (0, import_node_os15.homedir)().replace(/\\/g, "/");
+      const home = (0, import_node_os14.homedir)().replace(/\\/g, "/");
       const normalizedCwd = cwd.replace(/\\/g, "/");
       if (normalizedCwd === home) {
         displayPath = "~";
@@ -173453,8 +173653,8 @@ function renderCwd(cwd, format = "relative", useHyperlinks = false) {
       displayPath = cwd;
       break;
     case "folder": {
-      const parent = (0, import_node_path64.basename)((0, import_node_path64.dirname)(cwd));
-      const folder = (0, import_node_path64.basename)(cwd);
+      const parent = (0, import_node_path63.basename)((0, import_node_path63.dirname)(cwd));
+      const folder = (0, import_node_path63.basename)(cwd);
       displayPath = parent ? `${parent}/${folder}` : folder;
       break;
     }
@@ -173472,12 +173672,12 @@ function renderCwd(cwd, format = "relative", useHyperlinks = false) {
   }
   return rendered;
 }
-var import_node_os15, import_node_path64, import_node_url4;
+var import_node_os14, import_node_path63, import_node_url4;
 var init_cwd = __esm({
   "src/hud/elements/cwd.ts"() {
     "use strict";
-    import_node_os15 = require("node:os");
-    import_node_path64 = require("node:path");
+    import_node_os14 = require("node:os");
+    import_node_path63 = require("node:path");
     import_node_url4 = require("node:url");
     init_colors();
   }
@@ -173524,17 +173724,17 @@ var init_premium_budget = __esm({
 
 // src/hud/elements/hostname.ts
 function renderHostname() {
-  const full = (0, import_node_os16.hostname)();
+  const full = (0, import_node_os15.hostname)();
   if (!full) return null;
   const short2 = full.split(".")[0];
   if (!short2) return null;
   return cyan(`host:${short2}`);
 }
-var import_node_os16;
+var import_node_os15;
 var init_hostname = __esm({
   "src/hud/elements/hostname.ts"() {
     "use strict";
-    import_node_os16 = require("node:os");
+    import_node_os15 = require("node:os");
     init_colors();
   }
 });
@@ -173745,7 +173945,7 @@ function git9(args, cwd) {
   }).trim();
 }
 function getGitRepoName(cwd) {
-  const key = cwd ? (0, import_node_path65.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path64.resolve)(cwd) : process.cwd();
   const cached2 = repoCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -173767,7 +173967,7 @@ function getGitRepoName(cwd) {
   return result;
 }
 function getGitBranch(cwd) {
-  const key = cwd ? (0, import_node_path65.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path64.resolve)(cwd) : process.cwd();
   const cached2 = branchCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -173783,7 +173983,7 @@ function getGitBranch(cwd) {
   return result;
 }
 function getWorktreeInfo(cwd) {
-  const key = cwd ? (0, import_node_path65.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path64.resolve)(cwd) : process.cwd();
   const cached2 = worktreeCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -173792,18 +173992,18 @@ function getWorktreeInfo(cwd) {
   try {
     const gitDir = git9(["rev-parse", "--git-dir"], cwd);
     const gitCommonDir = git9(["rev-parse", "--git-common-dir"], cwd);
-    let resolvedGitDir = (0, import_node_path65.resolve)(key, gitDir);
-    let resolvedCommonDir = (0, import_node_path65.resolve)(key, gitCommonDir);
+    let resolvedGitDir = (0, import_node_path64.resolve)(key, gitDir);
+    let resolvedCommonDir = (0, import_node_path64.resolve)(key, gitCommonDir);
     try {
-      resolvedGitDir = (0, import_node_fs60.realpathSync)(resolvedGitDir);
+      resolvedGitDir = (0, import_node_fs59.realpathSync)(resolvedGitDir);
     } catch {
     }
     try {
-      resolvedCommonDir = (0, import_node_fs60.realpathSync)(resolvedCommonDir);
+      resolvedCommonDir = (0, import_node_fs59.realpathSync)(resolvedCommonDir);
     } catch {
     }
     if (resolvedGitDir !== resolvedCommonDir) {
-      result = { isWorktree: true, worktreeName: (0, import_node_path65.basename)(resolvedGitDir) };
+      result = { isWorktree: true, worktreeName: (0, import_node_path64.basename)(resolvedGitDir) };
     }
   } catch {
   }
@@ -173825,7 +174025,7 @@ function renderGitBranch(cwd) {
   return `${dim("branch:")}${cyan(branch2)}`;
 }
 function getGitStatusCounts(cwd) {
-  const key = cwd ? (0, import_node_path65.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path64.resolve)(cwd) : process.cwd();
   const cached2 = statusCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -173876,13 +174076,13 @@ function renderGitStatus(cwd, labels = DEFAULT_HUD_LABELS) {
   if (behind > 0) parts.push(`${red(labels.behind)}${behind}`);
   return parts.join(" ");
 }
-var import_node_child_process24, import_node_fs60, import_node_path65, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
+var import_node_child_process24, import_node_fs59, import_node_path64, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
 var init_git = __esm({
   "src/hud/elements/git.ts"() {
     "use strict";
     import_node_child_process24 = require("node:child_process");
-    import_node_fs60 = require("node:fs");
-    import_node_path65 = require("node:path");
+    import_node_fs59 = require("node:fs");
+    import_node_path64 = require("node:path");
     init_colors();
     init_types8();
     init_url();
@@ -173910,27 +174110,27 @@ function isGitRepo(dir) {
   }
 }
 function looksLikeRepo(entryPath) {
-  return (0, import_node_fs61.existsSync)((0, import_node_path66.join)(entryPath, ".git"));
+  return (0, import_node_fs60.existsSync)((0, import_node_path65.join)(entryPath, ".git"));
 }
 function countActiveSessions(cwd) {
-  const sessionsDir = (0, import_node_path66.join)(getOmcRoot(cwd), "state", "sessions");
-  if (!(0, import_node_fs61.existsSync)(sessionsDir)) return 0;
+  const sessionsDir = (0, import_node_path65.join)(getOmcRoot(cwd), "state", "sessions");
+  if (!(0, import_node_fs60.existsSync)(sessionsDir)) return 0;
   const now2 = Date.now();
   let active = 0;
   try {
-    const entries = (0, import_node_fs61.readdirSync)(sessionsDir, { withFileTypes: true });
+    const entries = (0, import_node_fs60.readdirSync)(sessionsDir, { withFileTypes: true });
     for (const entry2 of entries) {
       if (!entry2.isDirectory()) continue;
       if (!SESSION_ID_PATTERN.test(entry2.name)) continue;
-      const dirPath = (0, import_node_path66.join)(sessionsDir, entry2.name);
+      const dirPath = (0, import_node_path65.join)(sessionsDir, entry2.name);
       let fresh = false;
       try {
-        if (now2 - (0, import_node_fs61.statSync)(dirPath).mtimeMs < ACTIVITY_WINDOW_MS) {
+        if (now2 - (0, import_node_fs60.statSync)(dirPath).mtimeMs < ACTIVITY_WINDOW_MS) {
           fresh = true;
         } else {
-          for (const f of (0, import_node_fs61.readdirSync)(dirPath)) {
+          for (const f of (0, import_node_fs60.readdirSync)(dirPath)) {
             try {
-              if (now2 - (0, import_node_fs61.statSync)((0, import_node_path66.join)(dirPath, f)).mtimeMs < ACTIVITY_WINDOW_MS) {
+              if (now2 - (0, import_node_fs60.statSync)((0, import_node_path65.join)(dirPath, f)).mtimeMs < ACTIVITY_WINDOW_MS) {
                 fresh = true;
                 break;
               }
@@ -173948,7 +174148,7 @@ function countActiveSessions(cwd) {
   return active;
 }
 function detectMultiRepo(cwd) {
-  const key = cwd ? (0, import_node_path66.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path65.resolve)(cwd) : process.cwd();
   const cached2 = multiRepoCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -173961,11 +174161,11 @@ function detectMultiRepo(cwd) {
     }
     let subrepoCount = 0;
     try {
-      const entries = (0, import_node_fs61.readdirSync)(key, { withFileTypes: true });
+      const entries = (0, import_node_fs60.readdirSync)(key, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
         if (entry2.name.startsWith(".")) continue;
-        if (looksLikeRepo((0, import_node_path66.join)(key, entry2.name))) subrepoCount++;
+        if (looksLikeRepo((0, import_node_path65.join)(key, entry2.name))) subrepoCount++;
       }
     } catch {
     }
@@ -173973,12 +174173,12 @@ function detectMultiRepo(cwd) {
       multiRepoCache.set(key, { value: null, expiresAt: Date.now() + CACHE_TTL_MS4 });
       return null;
     }
-    const hasMarker = (0, import_node_fs61.existsSync)((0, import_node_path66.join)(key, ".omc-workspace"));
+    const hasMarker = (0, import_node_fs60.existsSync)((0, import_node_path65.join)(key, ".omc-workspace"));
     const activeSessions = hasMarker ? countActiveSessions(key) : 0;
     result = {
       isMultiRepo: true,
       hasMarker,
-      parentName: (0, import_node_path66.basename)(key),
+      parentName: (0, import_node_path65.basename)(key),
       subrepoCount,
       activeSessions
     };
@@ -173997,13 +174197,13 @@ function renderMultiRepo(cwd) {
   const sessionsPart = info.activeSessions > 0 ? ` ${dim("sessions:~")}${green(String(info.activeSessions))}` : ` ${dim("sessions:~")}${dim("0")}`;
   return `${dim("mr:")}${cyan(info.parentName)} ${dim("repos:")}${cyan(String(info.subrepoCount))}` + sessionsPart;
 }
-var import_node_child_process25, import_node_fs61, import_node_path66, ACTIVITY_WINDOW_MS, SESSION_ID_PATTERN, CACHE_TTL_MS4, multiRepoCache;
+var import_node_child_process25, import_node_fs60, import_node_path65, ACTIVITY_WINDOW_MS, SESSION_ID_PATTERN, CACHE_TTL_MS4, multiRepoCache;
 var init_multi_repo = __esm({
   "src/hud/elements/multi-repo.ts"() {
     "use strict";
     import_node_child_process25 = require("node:child_process");
-    import_node_fs61 = require("node:fs");
-    import_node_path66 = require("node:path");
+    import_node_fs60 = require("node:fs");
+    import_node_path65 = require("node:path");
     init_colors();
     init_worktree_paths();
     ACTIVITY_WINDOW_MS = 5 * 60 * 1e3;
@@ -187840,7 +188040,7 @@ function formatSmokeReport(report3) {
   lines4.push(`copilot: ${report3.copilot.bin ?? "not found"}${report3.copilot.version ? ` (v${report3.copilot.version})` : ""}`);
   if (report3.sdk) {
     const { version: version3, runtimeVersion, protocolVersion, model } = report3.sdk;
-    lines4.push(`sdk: @github/copilot-sdk ${version3 ?? "?"} driving runtime ${runtimeVersion ?? "?"} (protocol ${protocolVersion ?? "?"}), model ${model}`);
+    lines4.push(`sdk: @microsoft/copilot-sdk ${version3 ?? "?"} driving runtime ${runtimeVersion ?? "?"} (protocol ${protocolVersion ?? "?"}), model ${model}`);
   }
   let group = null;
   for (const check2 of report3.checks) {
@@ -188703,8 +188903,8 @@ async function sessionFrictionReportCommand(options, logger = console) {
 }
 
 // src/config/quality-gates.ts
-var import_node_fs51 = require("node:fs");
-var import_node_path54 = require("node:path");
+var import_node_fs50 = require("node:fs");
+var import_node_path53 = require("node:path");
 init_loader();
 init_config_dir();
 init_worktree_paths();
@@ -188886,22 +189086,22 @@ function getSkillRoots(options) {
   const bundledSkillsDir = options.bundledSkillsDir ?? getSkillsDir();
   const pluginRoot = options.pluginRoot === void 0 ? process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || process.env.OMC_PLUGIN_ROOT || null : options.pluginRoot;
   return [
-    (0, import_node_path54.join)(cwd, ".copilot", "skills"),
-    (0, import_node_path54.join)(cwd, ".claude", "skills"),
-    (0, import_node_path54.join)(omcRoot, "skills"),
-    (0, import_node_path54.join)(cwd, ".agents", "skills"),
-    (0, import_node_path54.join)(userConfigDir, "skills"),
-    ...pluginRoot ? [(0, import_node_path54.join)(pluginRoot, "skills")] : [],
+    (0, import_node_path53.join)(cwd, ".copilot", "skills"),
+    (0, import_node_path53.join)(cwd, ".claude", "skills"),
+    (0, import_node_path53.join)(omcRoot, "skills"),
+    (0, import_node_path53.join)(cwd, ".agents", "skills"),
+    (0, import_node_path53.join)(userConfigDir, "skills"),
+    ...pluginRoot ? [(0, import_node_path53.join)(pluginRoot, "skills")] : [],
     bundledSkillsDir,
-    (0, import_node_path54.join)(cwd, "skills")
+    (0, import_node_path53.join)(cwd, "skills")
   ];
 }
 function resolveQualityGateSkillPath(skillName, options = {}) {
   const skill = skillName.startsWith("$") ? skillName.slice(1) : skillName;
   const roots = getSkillRoots(options);
   for (const root of roots) {
-    const skillPath = (0, import_node_path54.join)(root, skill, "SKILL.md");
-    if ((0, import_node_fs51.existsSync)(skillPath)) return skillPath;
+    const skillPath = (0, import_node_path53.join)(root, skill, "SKILL.md");
+    if ((0, import_node_fs50.existsSync)(skillPath)) return skillPath;
   }
   if (options.bundledSkillsDir === void 0) {
     return getBuiltinSkillPath(skill) ?? null;
@@ -188991,8 +189191,8 @@ function inferDelegationPlanForTeamTask(text9) {
 // src/cli/commands/team.ts
 init_types9();
 init_loader();
-var import_node_fs53 = require("node:fs");
-var import_node_path56 = require("node:path");
+var import_node_fs52 = require("node:fs");
+var import_node_path55 = require("node:path");
 init_tmux_utils();
 init_worktree_paths();
 init_host_detection();
@@ -189033,7 +189233,7 @@ Transport:
   --transport auto     The default. Under the Copilot CLI host (COPILOT_CLI or
                        COPILOT_AGENT_SESSION_ID set): sdk, falling back to pane (with a
                        note on stderr) for a team the sdk transport cannot run or when
-                       @github/copilot-sdk is not installed. Under Claude Code, or with no
+                       @microsoft/copilot-sdk is not installed. Under Claude Code, or with no
                        host signal (a plain terminal): pane.
   team.transport in the project config sets the default (sdk|pane|auto); the flag wins.
 
@@ -189198,13 +189398,13 @@ function slugifyTask(task) {
 }
 function resolveAvailableTeamName(baseName3, cwd) {
   const sanitizedBase = slugifyTask(baseName3);
-  const stateRoot2 = (0, import_node_path56.join)(getOmcRoot(cwd), "state", "team");
-  const teamDir2 = (name) => (0, import_node_path56.join)(stateRoot2, name);
-  if (!(0, import_node_fs53.existsSync)(teamDir2(sanitizedBase))) return sanitizedBase;
+  const stateRoot2 = (0, import_node_path55.join)(getOmcRoot(cwd), "state", "team");
+  const teamDir2 = (name) => (0, import_node_path55.join)(stateRoot2, name);
+  if (!(0, import_node_fs52.existsSync)(teamDir2(sanitizedBase))) return sanitizedBase;
   for (let suffix = 2; suffix <= 99; suffix++) {
     const suffixText = `-${suffix}`;
     const candidate = `${sanitizedBase.slice(0, 30 - suffixText.length).replace(/-$/g, "")}${suffixText}`;
-    if (!(0, import_node_fs53.existsSync)(teamDir2(candidate))) return candidate;
+    if (!(0, import_node_fs52.existsSync)(teamDir2(candidate))) return candidate;
   }
   throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omg/state/team entries or choose a more specific launch task.`);
 }
@@ -189222,7 +189422,7 @@ async function isTeamStateLive(config2, teamName, cwd) {
       if (worker.launch_attempt_id && session.attempt_id !== worker.launch_attempt_id) continue;
       const started = (() => {
         try {
-          return JSON.parse((0, import_node_fs53.readFileSync)(absPath2(cwd, TeamPaths2.workerLaunchStarted(teamName, worker.name, session.attempt_id)), "utf8"));
+          return JSON.parse((0, import_node_fs52.readFileSync)(absPath2(cwd, TeamPaths2.workerLaunchStarted(teamName, worker.name, session.attempt_id)), "utf8"));
         } catch {
           return null;
         }
@@ -189720,7 +189920,7 @@ async function startupCleanupIncompleteMessage(teamName, cwd) {
   const config2 = await readJson7(absPath2(cwd, TeamPaths2.config(name)));
   if (config2?.lifecycle_state !== "starting") return null;
   const teamRoot = absPath2(cwd, TeamPaths2.root(name));
-  const failure5 = await readJson7((0, import_node_path56.join)(teamRoot, "startup-failure.json"));
+  const failure5 = await readJson7((0, import_node_path55.join)(teamRoot, "startup-failure.json"));
   const evidence = failure5?.creation_evidence;
   const partial2 = failure5?.partial_session;
   const socketPath = [evidence?.socketPath, evidence?.tmuxServerIdentity?.socket_path, partial2?.tmuxServerIdentity?.socket_path].find((value) => typeof value === "string" && value.length > 0);
@@ -191010,13 +191210,13 @@ init_artifacts();
 
 // src/ultragoal/goal-record.ts
 var import_promises33 = require("node:fs/promises");
-var import_node_path59 = require("node:path");
+var import_node_path58 = require("node:path");
 init_atomic_write();
 init_artifacts();
 init_skill_slash();
 var OMG_GOAL_RECORD = "omg-goal.json";
 function omgGoalRecordPath(cwd, planId) {
-  return (0, import_node_path59.join)(ultragoalDir(cwd, planId), OMG_GOAL_RECORD);
+  return (0, import_node_path58.join)(ultragoalDir(cwd, planId), OMG_GOAL_RECORD);
 }
 async function readOmgGoalRecord(cwd, planId) {
   let raw;
@@ -191449,8 +191649,8 @@ ${ULTRAGOAL_HELP}`);
 }
 
 // src/cli/commands/alias-retirement.ts
-var import_node_fs58 = require("node:fs");
-var import_node_path62 = require("node:path");
+var import_node_fs57 = require("node:fs");
+var import_node_path61 = require("node:path");
 
 // src/alias-retirement/registry.ts
 var ALIAS_RETIREMENT_SCHEMA_VERSION = 1;
@@ -191502,8 +191702,8 @@ function assertAliasRegistryIntegrity() {
 }
 
 // src/alias-retirement/verifier.ts
-var import_node_fs56 = require("node:fs");
-var import_node_path60 = require("node:path");
+var import_node_fs55 = require("node:fs");
+var import_node_path59 = require("node:path");
 var import_node_url3 = require("node:url");
 function evaluateAlias(input2) {
   const { record: record3, currentVersion, now: now2, usageHistory, criticalIntegrations } = input2;
@@ -191560,14 +191760,14 @@ function evaluateAlias(input2) {
 }
 function getPackageVersionFallback() {
   try {
-    let dir = (0, import_node_path60.dirname)((0, import_node_url3.fileURLToPath)(importMetaUrl));
+    let dir = (0, import_node_path59.dirname)((0, import_node_url3.fileURLToPath)(importMetaUrl));
     for (let i = 0; i < 6; i++) {
       try {
-        const pkg = JSON.parse((0, import_node_fs56.readFileSync)((0, import_node_path60.join)(dir, "package.json"), "utf-8"));
+        const pkg = JSON.parse((0, import_node_fs55.readFileSync)((0, import_node_path59.join)(dir, "package.json"), "utf-8"));
         if (pkg.version) return pkg.version;
       } catch {
       }
-      const parent = (0, import_node_path60.dirname)(dir);
+      const parent = (0, import_node_path59.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -191605,11 +191805,11 @@ function summarizeReceipts(receipts) {
 }
 
 // src/alias-retirement/closure.ts
-var import_node_fs57 = require("node:fs");
-var import_node_path61 = require("node:path");
+var import_node_fs56 = require("node:fs");
+var import_node_path60 = require("node:path");
 function buildClosureReport(receipts, options = {}) {
   const cwd = options.cwd ?? process.cwd();
-  const exists = options.exists ?? ((p) => (0, import_node_fs57.existsSync)((0, import_node_path61.join)(cwd, p)));
+  const exists = options.exists ?? ((p) => (0, import_node_fs56.existsSync)((0, import_node_path60.join)(cwd, p)));
   const byAlias = new Map(receipts.map((r) => [r.alias.toLowerCase(), r]));
   const entries = receipts.flatMap(
     (r) => r.generatedArtifacts.map((p) => {
@@ -191702,7 +191902,7 @@ function readJsonMaybePath(raw) {
   const looksLikePath = raw.endsWith(".json") || raw.includes("/") || raw.includes("\\") || /^[\w.-]+\.json$/.test(raw);
   if (looksLikePath) {
     try {
-      const text9 = (0, import_node_fs58.readFileSync)(raw, "utf-8");
+      const text9 = (0, import_node_fs57.readFileSync)(raw, "utf-8");
       return JSON.parse(text9);
     } catch {
     }
@@ -191802,8 +192002,8 @@ async function aliasRetirementCommand(args) {
     };
     const text9 = JSON.stringify(payload, null, 2);
     if (outPath) {
-      (0, import_node_fs58.mkdirSync)((0, import_node_path62.dirname)((0, import_node_path62.join)(process.cwd(), outPath)), { recursive: true });
-      (0, import_node_fs58.writeFileSync)((0, import_node_path62.join)(process.cwd(), outPath), `${text9}
+      (0, import_node_fs57.mkdirSync)((0, import_node_path61.dirname)((0, import_node_path61.join)(process.cwd(), outPath)), { recursive: true });
+      (0, import_node_fs57.writeFileSync)((0, import_node_path61.join)(process.cwd(), outPath), `${text9}
 `);
       console.log(`wrote ${outPath}`);
     }
@@ -194073,8 +194273,8 @@ ${parsed2.prompt}`;
 // src/cli/graph.ts
 init_esm();
 init_source();
-var import_node_fs59 = require("node:fs");
-var import_node_path63 = require("node:path");
+var import_node_fs58 = require("node:fs");
+var import_node_path62 = require("node:path");
 init_descriptor();
 init_types11();
 
@@ -194672,12 +194872,12 @@ async function loadSealedDescriptor(descriptorPath, runsRoot) {
   let runDirHandle;
   try {
     runDirHandle = resolveRunDirHandle(runsRoot, fresh.run_id);
-    storedPath = (0, import_node_path63.join)(runDirHandle.path, "descriptor.json");
+    storedPath = (0, import_node_path62.join)(runDirHandle.path, "descriptor.json");
   } catch (error62) {
     fail6(`invalid run directory for run "${fresh.run_id}": ${errorMessage2(error62)}`, 1);
     return null;
   }
-  if (!(0, import_node_fs59.existsSync)(storedPath)) {
+  if (!(0, import_node_fs58.existsSync)(storedPath)) {
     return fresh;
   }
   let stored;
@@ -199709,10 +199909,10 @@ Reporting only: always exits 0, so compare "used" from --json against your own l
 var smokeCmd = program2.command("smoke").description("Smoke-test the plugin inside a real host CLI");
 smokeCmd.command("copilot").description("Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session; tier 2: SDK-driven scenarios)").option("--tier <0|1|2>", "Tier 0 = static/load checks only; tier 1 adds one -p session; tier 2 = tier 0 + SDK static checks + scenarios (default 0, or 2 with --scenario/--sdk-static)").option("--plugin-root <dir>", "Plugin directory to load via --plugin-dir (default: this omg package root)").option("--model <id>", "Tiers 1-2 model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)").option("--max-credits <n>", "Tiers 1-2 AI credit cap (default and minimum 30): tier 1 passes --max-ai-credits; tier 2 also aborts a scenario and skips the rest once the run passes it").option("--timeout <ms>", "Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s").option("--keep-home", "Keep the throwaway COPILOT_HOME and project dir for debugging").option("--delegate", "Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected").option("--scenario <list|all>", "Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain, team, factory-run, factory-run-fix and sandbox-lane (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain, a real 2-worker sdk team and omg factory run with real lanes up to the human merge gate (factory-run-fix adds one fix round), and run review, write and canary lanes in the OS sandbox; continuation, prompt-context, events and ultragoal (opt-in, headless copilot sessions) check Stop-hook continuations, UserPromptSubmit context, postToolUseFailure/permissionRequest/preCompact and the ultragoal tool gate").option("--sdk-static", "Tier 2 with no scenarios: SDK static checks only, zero model calls").option("--record <dir>", "Tier 2: record every model request of the scenarios into <dir>/<platform>-<arch>/<scenario>/ (billed; needs --model; refused under CI and for copilot -p scenarios), then gate and replay the new cassettes").option("--record-overwrite", "With --record: replace an existing cassette").option("--replay <dir>", "Tier 2: answer every model request from <dir>/<platform>-<arch>/<scenario>/ (free, no credentials; pins the recorded model; copilot -p scenarios refused)").option("--replay-strict", "With --replay: a drifted request (delta, tool list or model) misses instead of being served").option("--json", "Print the full SmokeReport as JSON (always, also for option errors)").addHelpText("after", `
 Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary or
-@github/copilot-sdk not found, no other failure).
+@microsoft/copilot-sdk not found, no other failure).
 
-Tier 2 needs @github/copilot-sdk, which oh-my-copilot does not install:
-  npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+Tier 2 needs @microsoft/copilot-sdk, which oh-my-copilot does not install:
+  npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
 It always drives the installed copilot binary, never the SDK's bundled runtime.
 
 Examples:

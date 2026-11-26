@@ -325,6 +325,19 @@ describe('review fixes round 4 (#349): the gate reassembles SDK delta events', (
     const events = split('set password=hunter2hunter2 now', [19]).map((deltaContent) => ({ type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent } }));
     expect(gateFiles(eventsFile(new Redactor().redactEvents(events)))).toEqual([]);
   });
+  it('finds a token split across the stdout and stderr of one tool.shell_output call (sequence runs across streams)', () => {
+    const token = `ghp_${'a'.repeat(18)}${'b'.repeat(18)}`;
+    const [a, b] = split(token, [20]);
+    // In the file the stderr half comes first: only the call's streams joined in sequence order show the token.
+    const events = [
+      { type: 'tool.shell_output', id: 'e0', ephemeral: true, data: { toolCallId: 't1', sequence: 1, stream: 'stderr', text: b } },
+      { type: 'tool.shell_output', id: 'e1', ephemeral: true, data: { toolCallId: 't1', sequence: 0, text: a } },
+    ];
+    // Per-stream redaction cannot see it (each half alone is no token), so the gate must.
+    const redacted = new Redactor().redactEvents(events);
+    expect(redacted).toEqual(events);
+    expect(gateFiles(eventsFile(redacted)).map((h) => h.rule)).toContain('github-token');
+  });
 });
 
 describe('review fixes round 5 (#349): the structural backstop', () => {

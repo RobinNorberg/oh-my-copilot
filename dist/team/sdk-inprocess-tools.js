@@ -4,7 +4,7 @@
  * By default an SDK worker session loads the plugin's stdio MCP server `t`
  * from `.mcp.json` (one `node bridge/mcp-server.cjs` child per session). With
  * this layer the host registers the same tools as SDK session tools
- * (`SessionConfig.tools`, `@github/copilot-sdk` 1.0.16) and disables the `t`
+ * (`CreateSessionOptions.tools.definitions`, `@microsoft/copilot-sdk` v2) and disables the `t`
  * server for that session. The tools run in the sdk-host process.
  *
  * Parity with the MCP server:

@@ -745,14 +745,13 @@ jobs:
     env:
       # `npm i -g @github/copilot` is the CLI's documented npm install; its
       # loader runs the native @github/copilot-linux-x64 binary.
-      # Pinned: CLI 1.0.113+ speaks SDK protocol 4, and the newest
-      # @github/copilot-sdk (1.0.34) still supports protocol 3 only, so every
-      # sdk.* check fails with "SDK protocol version mismatch". 1.0.112 is the
-      # last protocol-3 CLI (SDK start() handshake probe; run 44110098147
-      # reports "runtime 1.0.112, protocol 3"). Back to `latest` once an SDK
-      # release supports protocol 4.
-      SMOKE_CLI_DIST_TAG: '1.0.112'
-      SMOKE_SDK_RANGE: '^1.0.16'
+      # Pinned as a pair: @microsoft/copilot-sdk 2.x (SDK v2) speaks SDK
+      # protocol 4 only, which Copilot CLI 1.0.113+ reports; 2.0.3 is built
+      # against runtime 1.0.116, the pair tested locally (no-session start()
+      # handshake: "runtime 1.0.116, protocol 4"). Move both together: an SDK
+      # and a CLI on different protocols fail the handshake.
+      SMOKE_CLI_VERSION: '1.0.116'
+      SMOKE_SDK_VERSION: '2.0.3'
       SMOKE_OPT_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_scenarios || (github.event_name == 'push' && github.ref_type == 'tag' && vars.COPILOT_SMOKE_OPT_IN) || '' }}
     steps:
       - name: Check for the Copilot token
@@ -800,11 +799,13 @@ jobs:
       - name: Install Copilot CLI and SDK
         if: steps.gate.outputs.enabled == 'true'
         run: |
-          # The SDK is an optional peer: global install, no bundled runtime
-          # (--omit=optional), no koffi build (--ignore-scripts). The smoke
-          # finds it via `npm root -g` and drives the installed CLI instead.
-          npm install --global --no-audit --no-fund --omit=optional --ignore-scripts "@github/copilot-sdk@$SMOKE_SDK_RANGE"
-          npm install --global --no-audit --no-fund "@github/copilot@$SMOKE_CLI_DIST_TAG"
+          # The SDK is an optional peer: global install, no koffi install step
+          # (--ignore-scripts; koffi serves only the in-process runtime host).
+          # npm installs the platform runtime package even with
+          # --omit=optional on a global install; it is never loaded. The smoke
+          # finds the SDK via `npm root -g` and spawns the installed CLI.
+          npm install --global --no-audit --no-fund --ignore-scripts "@microsoft/copilot-sdk@$SMOKE_SDK_VERSION"
+          npm install --global --no-audit --no-fund "@github/copilot@$SMOKE_CLI_VERSION"
           command -v copilot
           copilot --version
 

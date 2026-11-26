@@ -1,22 +1,24 @@
 /**
  * Tier 2 of `omg smoke copilot`: drive the installed Copilot CLI through
- * `@github/copilot-sdk` (optional and not declared in package.json, never bundled).
+ * `@microsoft/copilot-sdk` v2 (optional and not declared in package.json,
+ * never bundled; SDK protocol 4, Copilot CLI >= {@link MIN_COPILOT_CLI}).
  *
  * SDK resolution ({@link loadCopilotSdk}), first hit wins:
- * 1. `import('@github/copilot-sdk')` from this module: a local or project
+ * 1. `import('@microsoft/copilot-sdk')` from this module: a local or project
  *    install, or a global install next to a global oh-my-copilot (parent
  *    `node_modules` lookup);
  * 2. a global install: `%APPDATA%/npm/node_modules` (win32), then
  *    `npm root -g`. This covers a repo checkout (`npx tsx`, `node dist/...`)
- *    with the SDK installed by
- *    `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`.
+ *    with the SDK installed by `SDK_INSTALL_COMMAND` (copilot-sdk-scenarios.ts).
  *    A global hit must be named {@link SDK_PACKAGE}, satisfy
  *    `^`{@link SDK_MIN_VERSION}, and have its entry files inside its own dir.
  * Not found: every sdk.* and scn.* check fails with {@link SDK_MISSING_DETAIL}
  * and the report is `skipped`.
  *
- * The runtime is always the installed exe the earlier tiers resolved
- * (`RuntimeConnection.forStdio({ path })`), never the SDK's bundled runtime.
+ * The runtime is always the installed exe the earlier tiers resolved, spawned
+ * as a child process (`RuntimeConnection.forSpawnedStdio({ path })`), never
+ * the SDK's bundled runtime and never the in-process (FFI) host that SDK v2
+ * defaults to: the factory needs a separate process (sandbox, pid, args, env).
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
@@ -35,24 +37,39 @@ export type PermissionResult = {
     kind: 'reject';
     feedback?: string;
 };
+/** The permission callback (`CreateSessionOptions.permissions.onRequest`). */
+export type SdkPermissionHandler = (req: PermissionRequestLike, ctx: {
+    sessionId: string;
+}) => PermissionResult | Promise<PermissionResult>;
+/** The slice of SDK v2 `CreateSessionOptions` this codebase sets (nested groups; omitted groups keep the SDK defaults). */
 export interface SdkSessionConfig {
-    onPermissionRequest: (req: PermissionRequestLike, ctx: {
-        sessionId: string;
-    }) => PermissionResult | Promise<PermissionResult>;
-    onEvent?: (event: CopilotEvent) => void;
-    pluginDirectories: string[];
-    workingDirectory: string;
-    disabledMcpServers: string[];
-    excludedTools: string[];
     model?: string;
-    /** SDK session tools (`Tool[]`); the team host's in-process plugin tools. */
-    tools?: unknown[];
-    /** Allowlist of tool names; `excludedTools` still wins. */
-    availableTools?: string[];
-    /** Only for an SDK whose createSession forwards it ({@link sdkCreateSessionAcceptsSandbox}); 1.0.16 takes it through `rpc.options.update`. */
-    sandboxConfig?: unknown;
+    workingDirectory: string;
+    permissions: {
+        onRequest: SdkPermissionHandler;
+        /** The OS sandbox, applied before MCP servers or tools start (sandbox-session.ts confirms it through the enforcement status). */
+        sandbox?: unknown;
+    };
+    events?: {
+        onEvent?: (event: CopilotEvent) => void;
+    };
+    plugins: {
+        directories: string[];
+    };
+    mcp: {
+        disabledServers: string[];
+    };
+    tools: {
+        excludedTools: string[];
+        /** Allowlist of tool names; `excludedTools` still wins. */
+        availableTools?: string[];
+        /** SDK session tools (`Tool[]`); the team host's in-process plugin tools. */
+        definitions?: unknown[];
+    };
     /** Per-session GitHub token, sent over the session RPC (not the runtime env). */
-    gitHubToken?: string;
+    github?: {
+        token?: string;
+    };
 }
 export interface SdkSessionLike {
     sessionId: string;
@@ -77,12 +94,12 @@ export interface SdkSessionLike {
                 serverName: string;
             }): Promise<unknown>;
         };
-        /** Experimental in SDK 1.0.16; no model call. */
+        /** Experimental; no model call. */
         tools?: {
             initializeAndValidate?(): Promise<unknown>;
             getCurrentMetadata?(): Promise<unknown>;
         };
-        /** `sandboxConfig` patch after create (SDK 1.0.16). */
+        /** `session.options.update` patch (SDK v2 nested groups, e.g. `{ tools: { availableTools } }`). */
         options?: {
             update?(params: Record<string, unknown>): Promise<{
                 success?: boolean;
@@ -120,48 +137,52 @@ export interface SdkClientLike {
     setCassetteScenario?(scenario: string, stateDir: string): void;
 }
 /**
- * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
- * than 1.0.16, which takes it only through `rpc.options.update`): its source
- * names the field. False when it cannot be read; the caller then patches the
- * session after create, which works on every SDK with the options RPC.
- *
- * A source regex is a weak signal, and it is safe here because it only picks
- * HOW the config is sent, never whether the session counts as sandboxed. A
- * false negative only sends the config through `rpc.options.update` before
- * the first turn. A false positive (the name appears but the field is
- * dropped) leaves the runtime unconfined; enforcement is still confirmed:
- * `sandbox.getEnforcementStatus` must not report blocked (confirmSandbox),
- * and every shell call must carry the runtime's `sandboxed: true`
- * attestation, so the first unconfined call stops the session with
- * `sandbox-escaped` (job.ts, the tool.execution_complete handler).
+ * `RuntimeConnection.forSpawnedStdio` options: the child process (`path`,
+ * `args`, `env`, its cwd `workingDirectory`) and the owned runtime's home
+ * (`baseDirectory`, COPILOT_HOME). SDK v1 had the last two on the client.
  */
-export declare function sdkCreateSessionAcceptsSandbox(loaded: LoadedSdk): boolean;
+export interface SpawnedStdioOptions {
+    path?: string;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+    workingDirectory?: string;
+    baseDirectory?: string;
+}
+/** The slice of SDK v2 `CopilotClientOptions` this codebase sets. */
 export interface SdkClientOptions {
-    connection: unknown;
-    baseDirectory: string;
-    workingDirectory: string;
+    /** SDK v2 requires an explicit mode; `coding-agent` is v1's implicit CLI-like default (renamed from `copilot-cli`). */
+    mode: 'coding-agent';
+    /** Always a spawned stdio connection (`RuntimeConnection.forSpawnedStdio`, see {@link spawnedClientOptions}). */
+    runtime: unknown;
     /** Set by withCassette (replay/handler.ts) only: routes every model request through the cassette handler. */
-    requestHandler?: unknown;
-    /** Set by withCassette in replay: never use the machine's stored login. */
-    useLoggedInUser?: boolean;
-    /**
-     * Client-level GitHub token (SDK 1.0.16 CopilotClientOptions.gitHubToken): the SDK puts it in the runtime's env
-     * (COPILOT_SDK_AUTH_TOKEN) and adds --no-auto-login. Only for a no-session probe; a lane's goes over the session RPC.
-     */
-    gitHubToken?: string;
+    models?: {
+        requestHandler?: unknown;
+    };
+    github?: {
+        /**
+         * Client-level GitHub token: the SDK puts it in the runtime's env (COPILOT_SDK_AUTH_TOKEN) and adds
+         * --no-auto-login. Only for a no-session probe; a lane's goes over the session RPC.
+         */
+        token?: string;
+        /** Set by withCassette in replay: never use the machine's stored login. */
+        useLoggedInUser?: boolean;
+    };
 }
 export interface CopilotSdkModule {
     CopilotClient: new (opts: SdkClientOptions) => SdkClientLike;
     RuntimeConnection: {
-        forStdio(opts: {
-            path?: string;
-            args?: string[];
-            env?: NodeJS.ProcessEnv;
-        }): unknown;
+        forSpawnedStdio(opts: SpawnedStdioOptions): unknown;
     };
-    /** `CopilotRequestHandler` (experimental, SDK >= 1.0.16); record/replay needs it. */
+    /** `CopilotRequestHandler` (experimental); record/replay needs it. */
     CopilotRequestHandler?: CopilotRequestHandlerCtor;
 }
+/**
+ * Client options for a runtime child process on `conn.path`: every client of
+ * this codebase is built here, in `coding-agent` mode (v1's implicit default).
+ */
+export declare function spawnedClientOptions(loaded: Pick<LoadedSdk, 'module'>, conn: SpawnedStdioOptions & {
+    path: string;
+}, extra?: Pick<SdkClientOptions, 'github'>): SdkClientOptions;
 export interface LoadedSdk {
     module: CopilotSdkModule;
     version: string | null;
@@ -178,9 +199,17 @@ export type LoadSdkFn = () => Promise<LoadedSdk | null>;
  * running node's dir are not probed: they could load an arbitrary package.
  */
 export declare function globalModuleRoots(env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): string[];
-/** Lowest SDK release the driver is written against (protocol 3). */
-export declare const SDK_MIN_VERSION = "1.0.16";
-/** `^1.0.16` without a semver dependency: same major 1, >= 1.0.16, no prerelease. */
+/** Lowest SDK release the driver is written against and tested with (SDK v2, protocol 4). */
+export declare const SDK_MIN_VERSION = "2.0.3";
+/**
+ * Lowest Copilot CLI the driver is tested with: the runtime SDK {@link SDK_MIN_VERSION}
+ * is built against. 1.0.113 is the first CLI on protocol 4; older ones speak protocol 3,
+ * which SDK v2 refuses at the handshake.
+ */
+export declare const MIN_COPILOT_CLI = "1.0.116";
+/** The package SDK v1 was published as; `omg factory check` names it when it is installed instead of {@link SDK_PACKAGE}. */
+export declare const LEGACY_SDK_PACKAGE = "@github/copilot-sdk";
+/** `^2.0.3` without a semver dependency: same major, >= {@link SDK_MIN_VERSION}, no prerelease. */
 export declare function satisfiesSdkRange(version: string | undefined | null): boolean;
 /**
  * Import the SDK from a package dir found under a global root. Refuses a
@@ -200,14 +229,17 @@ export declare function resolveShimTarget(shim: string, read?: (p: string) => st
  * when the cassette env is set (and loading throws when it cannot).
  */
 export declare function loadCopilotSdk(env?: NodeJS.ProcessEnv, spawnSync?: SpawnSyncFn): Promise<LoadedSdk | null>;
-export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
-/** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */
-export declare function runtimePid(client: SdkClientLike): number | undefined;
 /**
- * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
- * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
+ * The version of SDK v1 ({@link LEGACY_SDK_PACKAGE}) under the global roots
+ * {@link loadCopilotSdk} searches, or null. Reads package.json only: v1 is never
+ * imported. `omg factory check` names it when v2 is missing.
  */
-export declare const LAST_PROTOCOL3_CLI = "1.0.112";
+export declare function findLegacySdkVersion(env?: NodeJS.ProcessEnv, spawnSync?: SpawnSyncFn): string | null;
+export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
+/** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16 through 2.0.3). */
+export declare function runtimePid(client: SdkClientLike): number | undefined;
+/** Updates the Copilot CLI (the npm install; a WinGet or Homebrew install updates with `copilot update`). */
+export declare const COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
 /** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
 export declare function sdkProtocolMismatch(err: unknown): {
     sdkMin: number;
