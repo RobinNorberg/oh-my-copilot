@@ -200,6 +200,8 @@ describe('npm trusted publishing contract', () => {
         expect(recoveryJob).not.toMatch(/\b[0-9a-f]{40}\b/);
         expect(recoveryJob).toContain('tag_name: ${{ inputs.tag }}');
         expect(recoveryJob).toContain('name: npm-release-boundary-recovery-${{ inputs.tag }}');
+        // omg release verify binds a recovery run to its tag and sha through this title (src/release/engine.ts recoveryEvidence).
+        expect(recovery).toMatch(/^run-name: Release Recovery \$\{\{ inputs\.tag \}\} \$\{\{ inputs\.sha \}\}$/m);
         expect(recoveryJob).toContain("printf '%s' \"$RECOVERY_SHA\" | grep -Eq '^[0-9a-f]{40}$'");
         expect(recoveryJob).toContain('node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"');
         expect(recovery).toContain('workflow_dispatch:\n    inputs:\n      tag:\n        description: Exact annotated release tag to recover\n        required: true\n        type: string\n      sha:\n        description: Exact 40-character hexadecimal commit SHA to recover\n        required: true\n        type: string');

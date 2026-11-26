@@ -713,7 +713,29 @@ describe('release-boundary.mjs', () => {
         let servedTarball = tarball;
         let tarballRequests = 0;
         const attestation = slsaAttestation(dssePayload(evidence.sha512.hex));
+        // Per-path answers served before the real one: a status (3xx with a Location), a reset socket, or a 404 whose body stalls.
+        const failNext = {};
+        const stalled = [];
+        const requests = {};
         const server = await startServer((request, response) => {
+            const path = request.url ?? '';
+            requests[path] = (requests[path] ?? 0) + 1;
+            const action = failNext[path]?.shift();
+            if (action === 'reset') {
+                request.socket.destroy();
+                return;
+            }
+            if (action === 'stall') {
+                response.writeHead(404, { 'content-length': '1000' });
+                response.write('x');
+                stalled.push(response);
+                return;
+            }
+            if (action !== undefined) {
+                response.writeHead(action, action >= 300 && action < 400 ? { location: `${base}${path}` } : {});
+                response.end();
+                return;
+            }
             if (request.url === `/${PACKAGE_NAME}/${VERSION}`) {
                 sendJson(response, 200, {
                     name: PACKAGE_NAME,
@@ -768,14 +790,20 @@ describe('release-boundary.mjs', () => {
         const reset = (statuses) => {
             tarballStatuses = statuses;
             tarballRequests = 0;
+            for (const key of Object.keys(requests))
+                delete requests[key];
             stderr.mockClear();
         };
+        const tarballPath = `/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`;
+        const metadataPath = `/${PACKAGE_NAME}/${VERSION}`;
+        const rootPath = `/${PACKAGE_NAME}`;
+        const attestationPath = `/-/npm/v1/attestations/${PACKAGE_NAME}@${VERSION}`;
         try {
             await withEnvironment({
                 RELEASE_BOUNDARY_REGISTRY_URL: base,
                 RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
-                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '0',
-                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '0',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
             }, async () => {
                 reset([404, 404]);
                 await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
@@ -799,12 +827,61 @@ describe('release-boundary.mjs', () => {
                 expect(tarballRequests).toBe(1);
                 expect(stderr).not.toHaveBeenCalled();
                 servedTarball = tarball;
+                // A redirect is not propagation: it fails at once, as before the wait existed.
+                reset([302]);
+                await expect(verifyRegistry(options)).rejects.toThrow(/^registry tarball returned HTTP 302$/);
+                expect(tarballRequests).toBe(1);
+                expect(stderr).not.toHaveBeenCalled();
+                // The version metadata, root metadata and attestation reads wait too, and so does a reset connection.
+                reset([]);
+                failNext[metadataPath] = [404];
+                failNext[rootPath] = [503];
+                failNext[attestationPath] = ['reset', 404];
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(requests).toMatchObject({ [metadataPath]: 2, [rootPath]: 2, [attestationPath]: 3, [tarballPath]: 1 });
+                const waited = stderr.mock.calls.map(([line]) => String(line));
+                expect(waited).toHaveLength(4);
+                expect(waited[0]).toContain('registry version metadata returned HTTP 404; waiting');
+                expect(waited[1]).toContain('registry root metadata returned HTTP 503; waiting');
+                expect(waited[2]).toMatch(/^release-boundary: attestation endpoint network request failed for .*; waiting/);
+                expect(waited[3]).toContain('attestation endpoint returned HTTP 404; waiting');
+                // A 404 whose body never arrives is cancelled, not read: the next attempt goes out at once.
+                reset([]);
+                failNext[tarballPath] = ['stall'];
+                const started = Date.now();
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(Date.now() - started).toBeLessThan(10_000);
+                expect(requests[tarballPath]).toBe(2);
+                expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 404; waiting');
             });
+            // Refused connections and TLS failures are not waited out: they fail at once.
+            const closed = await startServer((_request, response) => response.end());
+            const closedBase = closed.base;
+            await closed.close();
+            for (const registry of [closedBase, base.replace('http:', 'https:')]) {
+                await withEnvironment({
+                    RELEASE_BOUNDARY_REGISTRY_URL: registry,
+                    RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                    RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                }, async () => {
+                    reset([]);
+                    const registryAudit = join(root, 'npm-audit-signatures-other.json');
+                    writeFileSync(registryAudit, JSON.stringify(auditReport(attestation, registry)));
+                    await expect(verifyRegistry({ ...options, auditPath: registryAudit })).rejects.toThrow(/^network request failed for /);
+                    expect(stderr).not.toHaveBeenCalled();
+                });
+            }
+            // No setting turns the wait into a tight request loop.
+            for (const name of ['RELEASE_BOUNDARY_PROPAGATION_DELAY_MS', 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS']) {
+                await withEnvironment({ RELEASE_BOUNDARY_REGISTRY_URL: base, [name]: '0' }, async () => {
+                    await expect(verifyRegistry(options)).rejects.toThrow(`${name} must be an integer between 100 and 600000`);
+                });
+            }
             await withEnvironment({
                 RELEASE_BOUNDARY_REGISTRY_URL: base,
-                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '40',
-                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '10',
-                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '10',
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '350',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
             }, async () => {
                 reset([]);
                 always404 = true;
@@ -820,6 +897,8 @@ describe('release-boundary.mjs', () => {
         }
         finally {
             stderr.mockRestore();
+            for (const response of stalled)
+                response.destroy();
             await server.close();
         }
     });

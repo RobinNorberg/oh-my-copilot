@@ -380,6 +380,8 @@ function tail(text: string, lines = 30): string[] {
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /** The tag run's job that publishes to npm and creates the GitHub Release (ci.yml `release` job name). */
 const RELEASE_JOB = 'Create GitHub Release';
+/** The Release Recovery workflow (workflow_dispatch tag/sha; its run-name is "Release Recovery <tag> <sha>"). */
+const RECOVERY_WORKFLOW = '.github/workflows/release.yml';
 
 /** Polls for a rerun's new attempt to appear before giving up (bounded even when the clock does not move). */
 const RERUN_START_POLLS = 40;
@@ -1632,6 +1634,43 @@ class Release {
     return { status: 'ok', note: `${tag} pushed on ${sha!.slice(0, 12)}` };
   }
 
+  /**
+   * Evidence that Release Recovery succeeded for `tag` on `sha`: an artifact named npm-release-boundary-recovery-<tag>
+   * (uploaded only after the recovery's verify-registry passed) whose producing run is a completed, successful
+   * workflow_dispatch run of release.yml in this repository, titled "Release Recovery <tag> <sha>" (its run-name, which
+   * binds the dispatched inputs; the run itself fails unless the tag peels to that sha), and origin's tag still peels
+   * to `sha`. An expired artifact still counts: only the run's metadata is read, never the artifact's files.
+   */
+  private recoveryEvidence(tag: string, sha: string): { problem?: string; note?: string } {
+    const name = `npm-release-boundary-recovery-${tag}`;
+    type Artifact = { id: number; name: string; expired?: boolean; workflow_run?: { id?: number } | null };
+    type WorkflowRun = {
+      id: number; path?: string; event?: string; status?: string; conclusion?: string | null; display_title?: string;
+      repository?: { full_name?: string }; head_repository?: { full_name?: string };
+    };
+    const listed = JSON.parse(this.must('gh', ['api', `repos/{owner}/{repo}/actions/artifacts?name=${encodeURIComponent(name)}&per_page=100`]) || '{}') as { total_count?: number; artifacts?: Artifact[] };
+    const artifacts = (listed.artifacts ?? []).filter((a) => a.name === name && typeof a.workflow_run?.id === 'number').sort((a, b) => b.id - a.id);
+    if (artifacts.length === 0) return { problem: `no Release Recovery evidence: no artifact ${name} in this repository` };
+    const rejected: string[] = [];
+    for (const artifact of artifacts) {
+      const runId = artifact.workflow_run!.id!;
+      const r = JSON.parse(this.must('gh', ['api', `repos/{owner}/{repo}/actions/runs/${runId}`]) || '{}') as WorkflowRun;
+      const why = [
+        (r.path ?? '').split('@')[0] !== RECOVERY_WORKFLOW && `path ${r.path ?? '(none)'}`,
+        r.event !== 'workflow_dispatch' && `event ${r.event ?? '(none)'}`,
+        (r.status !== 'completed' || r.conclusion !== 'success') && `${r.status ?? '(no status)'}/${r.conclusion ?? '(no conclusion)'}`,
+        (!r.repository?.full_name || r.head_repository?.full_name !== r.repository.full_name) && 'run from another repository',
+        r.display_title !== `Release Recovery ${tag} ${sha}` && `title "${r.display_title ?? ''}" is not "Release Recovery ${tag} ${sha}"`,
+      ].filter(Boolean);
+      if (why.length > 0) { rejected.push(`run ${runId}: ${why.join(', ')}`); continue; }
+      const remote = remoteTagTarget(this.git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+      if (!remote?.annotated || remote.commit !== sha) return { problem: `${tag} on origin does not peel to the main merge ${sha.slice(0, 12)}` };
+      return { note: `Release Recovery run ${runId}${artifact.expired ? ', artifact expired' : ''}` };
+    }
+    const more = (listed.total_count ?? 0) > (listed.artifacts?.length ?? 0) ? ` (${listed.total_count} artifacts, first ${listed.artifacts?.length ?? 0} read)` : '';
+    return { problem: `no successful Release Recovery run for ${tag} ${sha.slice(0, 12)}: artifact ${name} came from ${rejected.join('; ')}${more}` };
+  }
+
   private async verify(): Promise<PhaseOutcome> {
     const v = this.v;
     const tag = `v${v}`;
@@ -1640,7 +1679,7 @@ class Release {
     type Run = { databaseId: number; headBranch?: string; headSha?: string; event?: string; status: string; conclusion?: string };
     type Job = { databaseId: number; name: string; conclusion?: string; status?: string };
     let run: Run | undefined;
-    let recovered = false;
+    let recovered = '';
     for (;;) {
       const runs = JSON.parse(this.must('gh', ['run', 'list', '--workflow', 'ci.yml', '--event', 'push', '--commit', sha!, '--json', 'databaseId,headBranch,headSha,event,status,conclusion', '--limit', '50']) || '[]') as Run[];
       run = runs.filter((r) => r.headBranch === tag && r.headSha === sha && (r.event ?? 'push') === 'push').sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -1662,10 +1701,19 @@ class Release {
               return false;
             }
           })();
-          // Only the publishing job failed and the GitHub Release exists: Release Recovery (which re-checks the registry
-          // archive first) or a manual gh release create completed the release. The checks below still apply.
+          // Only the publishing job failed and the GitHub Release exists: that passes only with proof that Release Recovery
+          // (which re-runs the full verify-registry, provenance required) succeeded for this tag and sha. A release made by
+          // hand proves nothing about the registry. The checks below still apply.
           if (published && failedJobs.length > 0 && failedJobs.every((j) => j.name === RELEASE_JOB)) {
-            recovered = true;
+            const evidence = this.recoveryEvidence(tag, sha!);
+            if (evidence.problem) {
+              fail(`tag run ${run.databaseId} ${run.conclusion} in ${RELEASE_JOB} and GitHub Release ${tag} exists, but ${evidence.problem}`, [
+                `only a successful Release Recovery run (gh workflow run release.yml -f tag=${tag} -f sha=${sha}) proves the registry check passed; a GitHub Release created by hand does not`,
+                `Release Recovery refuses to run while the GitHub Release exists: if it was created by hand, delete it first (gh release delete ${tag} --yes; the tag stays), run Release Recovery, then omg release ${v} --from verify`,
+                ...details(),
+              ]);
+            }
+            recovered = evidence.note!;
             break;
           }
           if (published) {
@@ -1677,7 +1725,7 @@ class Release {
           const recovery = `gh workflow run release.yml -f tag=${tag} -f sha=${sha}`;
           fail(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}): ${recovery}, or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}): ${recovery}; a release created by hand (gh release create) does not pass verify`,
             `then re-run omg release ${v} --from verify`,
             ...details(),
           ]);
@@ -1709,7 +1757,7 @@ class Release {
     if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
     else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
     if (problems.length > 0) fail(`tag run ${runId} is ${recovered ? `${run!.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : 'green'}, but the release is incomplete`, problems);
-    const how = recovered ? ` (tag run ${runId} ${run!.conclusion} in ${RELEASE_JOB}; completed by Release Recovery)` : '';
+    const how = recovered ? ` (tag run ${runId} ${run!.conclusion} in ${RELEASE_JOB}; completed by ${recovered})` : '';
     return { status: 'ok', note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
   }
 }

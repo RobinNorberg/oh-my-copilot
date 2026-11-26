@@ -195627,6 +195627,7 @@ function tail4(text9, lines4 = 30) {
 }
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
 var RELEASE_JOB = "Create GitHub Release";
+var RECOVERY_WORKFLOW = ".github/workflows/release.yml";
 var RERUN_START_POLLS = 40;
 var LAND_ROUNDS = 500;
 var SUITE_HEARTBEAT_MS = 5 * 6e4;
@@ -196752,13 +196753,47 @@ ${r.stderr}`;
     if (!pushed?.annotated || pushed.commit !== sha3) fail9(`origin's ${tag} does not peel to ${sha3.slice(0, 12)} after the push`);
     return { status: "ok", note: `${tag} pushed on ${sha3.slice(0, 12)}` };
   }
+  /**
+   * Evidence that Release Recovery succeeded for `tag` on `sha`: an artifact named npm-release-boundary-recovery-<tag>
+   * (uploaded only after the recovery's verify-registry passed) whose producing run is a completed, successful
+   * workflow_dispatch run of release.yml in this repository, titled "Release Recovery <tag> <sha>" (its run-name, which
+   * binds the dispatched inputs; the run itself fails unless the tag peels to that sha), and origin's tag still peels
+   * to `sha`. An expired artifact still counts: only the run's metadata is read, never the artifact's files.
+   */
+  recoveryEvidence(tag, sha3) {
+    const name = `npm-release-boundary-recovery-${tag}`;
+    const listed2 = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/artifacts?name=${encodeURIComponent(name)}&per_page=100`]) || "{}");
+    const artifacts = (listed2.artifacts ?? []).filter((a) => a.name === name && typeof a.workflow_run?.id === "number").sort((a, b) => b.id - a.id);
+    if (artifacts.length === 0) return { problem: `no Release Recovery evidence: no artifact ${name} in this repository` };
+    const rejected = [];
+    for (const artifact of artifacts) {
+      const runId = artifact.workflow_run.id;
+      const r = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/runs/${runId}`]) || "{}");
+      const why = [
+        (r.path ?? "").split("@")[0] !== RECOVERY_WORKFLOW && `path ${r.path ?? "(none)"}`,
+        r.event !== "workflow_dispatch" && `event ${r.event ?? "(none)"}`,
+        (r.status !== "completed" || r.conclusion !== "success") && `${r.status ?? "(no status)"}/${r.conclusion ?? "(no conclusion)"}`,
+        (!r.repository?.full_name || r.head_repository?.full_name !== r.repository.full_name) && "run from another repository",
+        r.display_title !== `Release Recovery ${tag} ${sha3}` && `title "${r.display_title ?? ""}" is not "Release Recovery ${tag} ${sha3}"`
+      ].filter(Boolean);
+      if (why.length > 0) {
+        rejected.push(`run ${runId}: ${why.join(", ")}`);
+        continue;
+      }
+      const remote = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+      if (!remote?.annotated || remote.commit !== sha3) return { problem: `${tag} on origin does not peel to the main merge ${sha3.slice(0, 12)}` };
+      return { note: `Release Recovery run ${runId}${artifact.expired ? ", artifact expired" : ""}` };
+    }
+    const more = (listed2.total_count ?? 0) > (listed2.artifacts?.length ?? 0) ? ` (${listed2.total_count} artifacts, first ${listed2.artifacts?.length ?? 0} read)` : "";
+    return { problem: `no successful Release Recovery run for ${tag} ${sha3.slice(0, 12)}: artifact ${name} came from ${rejected.join("; ")}${more}` };
+  }
   async verify() {
     const v = this.v;
     const tag = `v${v}`;
     const sha3 = this.state.mainMergeSha;
     if (!sha3 || !FULL_SHA3.test(sha3)) fail9("no main merge commit recorded; run the promote phase first");
     let run3;
-    let recovered = false;
+    let recovered = "";
     for (; ; ) {
       const runs = JSON.parse(this.must("gh", ["run", "list", "--workflow", "ci.yml", "--event", "push", "--commit", sha3, "--json", "databaseId,headBranch,headSha,event,status,conclusion", "--limit", "50"]) || "[]");
       run3 = runs.filter((r) => r.headBranch === tag && r.headSha === sha3 && (r.event ?? "push") === "push").sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -196780,7 +196815,15 @@ ${r.stderr}`;
             }
           })();
           if (published && failedJobs2.length > 0 && failedJobs2.every((j) => j.name === RELEASE_JOB)) {
-            recovered = true;
+            const evidence = this.recoveryEvidence(tag, sha3);
+            if (evidence.problem) {
+              fail9(`tag run ${run3.databaseId} ${run3.conclusion} in ${RELEASE_JOB} and GitHub Release ${tag} exists, but ${evidence.problem}`, [
+                `only a successful Release Recovery run (gh workflow run release.yml -f tag=${tag} -f sha=${sha3}) proves the registry check passed; a GitHub Release created by hand does not`,
+                `Release Recovery refuses to run while the GitHub Release exists: if it was created by hand, delete it first (gh release delete ${tag} --yes; the tag stays), run Release Recovery, then omg release ${v} --from verify`,
+                ...details()
+              ]);
+            }
+            recovered = evidence.note;
             break;
           }
           if (published) {
@@ -196792,7 +196835,7 @@ ${r.stderr}`;
           const recovery = `gh workflow run release.yml -f tag=${tag} -f sha=${sha3}`;
           fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}): ${recovery}, or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}): ${recovery}; a release created by hand (gh release create) does not pass verify`,
             `then re-run omg release ${v} --from verify`,
             ...details()
           ]);
@@ -196824,7 +196867,7 @@ ${r.stderr}`;
     if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
     else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
     if (problems.length > 0) fail9(`tag run ${runId} is ${recovered ? `${run3.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : "green"}, but the release is incomplete`, problems);
-    const how = recovered ? ` (tag run ${runId} ${run3.conclusion} in ${RELEASE_JOB}; completed by Release Recovery)` : "";
+    const how = recovered ? ` (tag run ${runId} ${run3.conclusion} in ${RELEASE_JOB}; completed by ${recovered})` : "";
     return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
   }
 };

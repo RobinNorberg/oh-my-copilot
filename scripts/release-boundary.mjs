@@ -27,6 +27,15 @@ const PROPAGATION_MAX_DELAY_ENV = 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS';
 const DEFAULT_PROPAGATION_BUDGET_MS = 600_000;
 const DEFAULT_PROPAGATION_DELAY_MS = 5_000;
 const DEFAULT_PROPAGATION_MAX_DELAY_MS = 60_000;
+// Floor of every wait between registry reads: no setting turns the propagation wait into a tight request loop.
+const MIN_PROPAGATION_DELAY_MS = 100;
+// Network failures worth waiting out (reset, timeout, abort, temporary DNS failure). Anything else (refused,
+// unknown host, TLS / certificate errors, a redirect under redirect: 'error') fails at once.
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
+  'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+const TRANSIENT_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 const SLSA_PREDICATE_TYPE = 'https://slsa.dev/provenance/v1';
 const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1';
@@ -717,7 +726,7 @@ async function fetchBounded(url, options = {}) {
     return await fetch(url, {
       ...options,
       signal: controller.signal,
-      redirect: 'error',
+      redirect: options.redirect ?? 'error',
       headers: {
         accept: 'application/json',
         ...(options.headers ?? {}),
@@ -725,19 +734,27 @@ async function fetchBounded(url, options = {}) {
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    fail(`network request failed for ${url}: ${detail}`);
+    throw new Error(`network request failed for ${url}: ${detail}`, { cause: error });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function nonNegativeIntegerEnv(name, fallback, max) {
+function integerEnv(name, fallback, min, max) {
   const configured = process.env[name];
   if (configured === undefined) return fallback;
-  if (!/^\d+$/.test(configured) || Number(configured) > max) {
-    fail(`${name} must be an integer between 0 and ${max}`);
+  if (!/^\d+$/.test(configured) || Number(configured) < min || Number(configured) > max) {
+    fail(`${name} must be an integer between ${min} and ${max}`);
   }
   return Number(configured);
+}
+
+/** True when a fetchBounded failure (its cause chain) is a network error that can plausibly clear on its own. */
+function isTransientNetworkError(error) {
+  for (let current = error?.cause, depth = 0; current && depth < 5; current = current.cause, depth += 1) {
+    if (TRANSIENT_ERROR_NAMES.has(current.name) || TRANSIENT_NETWORK_CODES.has(current.code)) return true;
+  }
+  return false;
 }
 
 // A fresh publish is visible in some registry reads before others (v5.31.0 and v5.33.0 saw the
@@ -745,10 +762,10 @@ function nonNegativeIntegerEnv(name, fallback, max) {
 // "not there yet" answers inside one shared budget. Content mismatches are never retried.
 function propagationWait({ packageName, version, tag, sha }) {
   fetchTimeoutMs(); // validate the timeout setting up front so a bad value is not retried as a network error
-  const budgetMs = nonNegativeIntegerEnv(PROPAGATION_BUDGET_ENV, DEFAULT_PROPAGATION_BUDGET_MS, 3_600_000);
-  const maxDelayMs = nonNegativeIntegerEnv(PROPAGATION_MAX_DELAY_ENV, DEFAULT_PROPAGATION_MAX_DELAY_MS, 600_000);
+  const budgetMs = integerEnv(PROPAGATION_BUDGET_ENV, DEFAULT_PROPAGATION_BUDGET_MS, 0, 3_600_000);
+  const maxDelayMs = integerEnv(PROPAGATION_MAX_DELAY_ENV, DEFAULT_PROPAGATION_MAX_DELAY_MS, MIN_PROPAGATION_DELAY_MS, 600_000);
   const initialDelayMs = Math.min(
-    nonNegativeIntegerEnv(PROPAGATION_DELAY_ENV, DEFAULT_PROPAGATION_DELAY_MS, 600_000),
+    integerEnv(PROPAGATION_DELAY_ENV, DEFAULT_PROPAGATION_DELAY_MS, MIN_PROPAGATION_DELAY_MS, 600_000),
     maxDelayMs,
   );
   return {
@@ -772,24 +789,28 @@ async function fetchUntilPresent(url, label, wait, options = {}) {
     let response;
     let detail;
     try {
-      response = await fetchBounded(url, options);
+      // A redirect comes back as its 3xx response and fails below at once, as redirect: 'error' did before.
+      response = await fetchBounded(url, { ...options, redirect: 'manual' });
     } catch (error) {
+      if (!isTransientNetworkError(error)) throw error;
       detail = error instanceof Error ? error.message : String(error);
     }
     if (response) {
       if (response.status === 200) return response;
       if (response.status !== 404 && response.status < 500) {
+        await response.body?.cancel().catch(() => undefined);
         fail(`${label} returned HTTP ${response.status}`);
       }
       detail = `returned HTTP ${response.status}`;
-      await response.arrayBuffer().catch(() => undefined); // release the connection before the next attempt
+      // Cancel, never read: the abort timer ended with the headers, so a stalled body would hang past the budget.
+      await response.body?.cancel().catch(() => undefined);
     }
     if (Date.now() + delayMs >= wait.deadline) {
       wait.exhausted(label, detail, attempt);
     }
     process.stderr.write(`release-boundary: ${label} ${detail}; waiting ${delayMs}ms for registry propagation (attempt ${attempt + 1})\n`);
     await new Promise(resolveDelay => setTimeout(resolveDelay, delayMs));
-    delayMs = Math.min(Math.max(delayMs * 2, 1), wait.maxDelayMs);
+    delayMs = Math.min(delayMs * 2, wait.maxDelayMs);
   }
 }
 
