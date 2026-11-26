@@ -21924,6 +21924,9 @@ function withSseData(block, value) {
   return lines.flatMap((l, i) => !l.startsWith("data:") ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : []).join("\n");
 }
 function deltaStreams(events) {
+  return [...deltaStreamMap(events).values()];
+}
+function deltaStreamMap(events) {
   const streams = /* @__PURE__ */ new Map();
   const add = (key, event, holder, field) => {
     if (typeof holder[field] !== "string") return;
@@ -21962,12 +21965,19 @@ function deltaStreams(events) {
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
-  const seq = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
-  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => seq(a) - seq(b) || a.event - b.event);
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 function reassembledDeltas(events) {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  const calls = /* @__PURE__ */ new Map();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...calls.get(call) ?? [], slots]);
+  }
+  const crossStream = [...calls.values()].filter((perStream) => perStream.length > 1).map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 function wsData(messages) {
   return messages.map((m) => parseJson(m.data));
@@ -22062,7 +22072,7 @@ function scanForSecrets(text2, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, SHELL_OUTPUT_KEY, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, SHELL_OUTPUT_KEY, shellSequence, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -22161,6 +22171,7 @@ var init_redact = __esm({
     isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
     SHELL_OUTPUT_KEY = "tool.shell_output";
+    shellSequence = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -23514,6 +23525,7 @@ var init_run = __esm({
 
 // src/smoke/copilot-sdk-driver.ts
 function spawnedClientOptions(loaded2, conn, extra = {}) {
+  if (typeof conn.path !== "string" || conn.path.trim() === "") throw new Error("the Copilot CLI path for the SDK connection is empty");
   return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 function isSdkModule(mod) {
@@ -23628,9 +23640,14 @@ async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_proce
 }
 async function findCopilotSdk(env, spawnSync8) {
   const spec = SDK_PACKAGE;
+  let outOfRange = null;
   try {
     const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+    if (isSdkModule(mod)) {
+      const version = nodeResolvedVersion();
+      if (satisfiesSdkRange(version)) return { module: mod, version, from: "node resolution" };
+      outOfRange = version ?? "an unknown version";
+    }
   } catch {
   }
   const tried = /* @__PURE__ */ new Set();
@@ -23646,10 +23663,12 @@ async function findCopilotSdk(env, spawnSync8) {
     }
   };
   for (const root of globalModuleRoots(env)) {
-    const hit = await tryRoot(root);
-    if (hit) return hit;
+    const hit2 = await tryRoot(root);
+    if (hit2) return hit2;
   }
-  return tryRoot(npmRootG(env, spawnSync8));
+  const hit = await tryRoot(npmRootG(env, spawnSync8));
+  if (!hit && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit;
 }
 function withTimeout2(promise, ms, label) {
   let timer;

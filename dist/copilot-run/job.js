@@ -16,7 +16,8 @@
  * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
  *   session without a confirmed sandbox gets no shell tool, a write session
  *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
- *   and a shell call the runtime reports as not sandboxed stops the session
+ *   and a shell call the runtime reports as not sandboxed, or a sandbox state
+ *   change that switches a confirmed sandbox off, stops the session
  *   (`sandbox-escaped`); every sandbox bypass request is rejected;
  * - the runtime env is an allowlist with the profile variables relocated to
  *   the job's home (allowlistSessionEnv);
@@ -65,7 +66,7 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, copilotConfigDenies, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, copilotConfigDenies, isSandboxPolicyError, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
 import { dotnetSandboxEnv, sandboxNugetConfig } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
@@ -1561,6 +1562,15 @@ export class CopilotRunManager {
                 case 'tool.execution_start':
                     sandbox.toolStarted(data);
                     break;
+                case 'session.sandbox_state_changed': {
+                    // Tripwire: a confirmed sandbox switched off or opted out mid-session is an escape.
+                    const escaped = sandbox.stateChanged(data);
+                    if (escaped && !job.stopReason) {
+                        job.error = `${escaped}; the session was stopped`;
+                        job.requestStop('sandbox-escaped');
+                    }
+                    break;
+                }
                 case 'tool.execution_complete': {
                     // Attestation (sandbox-session.ts): an unsandboxed shell call stops the session unless detect-only.
                     const escaped = sandbox.toolCompleted(data);
@@ -1675,9 +1685,10 @@ export class CopilotRunManager {
                     session = await create(atCreate, sandboxConfig !== null);
                 }
                 catch (err) {
-                    // A timeout may still create the session: never create a second one. Other errors with the policy
-                    // count as an unconfirmed sandbox (SDK v2 applies it at create, so a policy conflict fails here).
-                    if (!atCreate || err instanceof TimeoutError)
+                    // A timeout may still create the session: never create a second one. Only the runtime refusing the
+                    // policy (SDK v2 applies it at create, so a policy conflict fails here) counts as an unconfirmed sandbox;
+                    // a network, auth or model error is an ordinary create failure (no sandbox gate, no second session).
+                    if (!atCreate || err instanceof TimeoutError || !isSandboxPolicyError(err))
                         throw err;
                     created = false;
                     sandbox.createFailed(errText(err));

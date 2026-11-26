@@ -6,7 +6,7 @@ import { PassThrough } from 'stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
-import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, COPILOT_UPDATE_COMMAND, LEGACY_SDK_PACKAGE, findLegacySdkVersion, MIN_COPILOT_CLI, memoSdkProtocolProbe, PROBE_TIMEOUT_REASON, probeSdkProtocol, resolveShimTarget, rethrowSdkStartError, runSdkTier, sdkProtocolMismatch, runtimeCreditCap, scenarioPlaceholderDirs, satisfiesSdkRange, sandboxCanaryCommand, sandboxCanaryLaunched, } from '../copilot-sdk-driver.js';
+import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, COPILOT_UPDATE_COMMAND, LEGACY_SDK_PACKAGE, findLegacySdkVersion, MIN_COPILOT_CLI, memoSdkProtocolProbe, PROBE_TIMEOUT_REASON, probeSdkProtocol, resolveShimTarget, rethrowSdkStartError, runSdkTier, sdkProtocolMismatch, runtimeCreditCap, scenarioPlaceholderDirs, satisfiesSdkRange, sandboxCanaryCommand, sandboxCanaryLaunched, spawnedClientOptions, } from '../copilot-sdk-driver.js';
 import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_STATIC_IDS } from '../copilot-sdk-scenarios.js';
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
@@ -813,6 +813,16 @@ describe('SDK loading', () => {
         expect(globalModuleRoots({ APPDATA: 'C:\\Users\\u\\AppData\\Roaming', npm_config_prefix: 'C:\\evil' }, 'win32').map((p) => p.replace(/\\/g, '/')))
             .toEqual(['C:/Users/u/AppData/Roaming/npm/node_modules']);
         expect(globalModuleRoots({ npm_config_prefix: '/opt/npm', NPM_CONFIG_PREFIX: '/opt/npm' }, 'linux')).toEqual([]);
+    });
+    it('spawnedClientOptions refuses an empty or blank CLI path (the SDK would fall back to its bundled runtime)', () => {
+        const forSpawnedStdio = vi.fn((o) => o);
+        const loaded = { module: { CopilotClient: class {
+                }, RuntimeConnection: { forSpawnedStdio } } };
+        for (const path of ['', '   ', '\t\n']) {
+            expect(() => spawnedClientOptions(loaded, { path }), JSON.stringify(path)).toThrow('the Copilot CLI path for the SDK connection is empty');
+        }
+        expect(forSpawnedStdio).not.toHaveBeenCalled();
+        expect(spawnedClientOptions(loaded, { path: '/usr/bin/copilot' }).runtime).toEqual({ path: '/usr/bin/copilot' });
     });
     it('satisfiesSdkRange is ^2.0.3', () => {
         for (const v of ['2.0.3', '2.0.4', '2.1.0', '2.20.3'])

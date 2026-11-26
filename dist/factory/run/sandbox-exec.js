@@ -314,6 +314,9 @@ export async function runSandboxed(argv, o, deps) {
                     const data = (e.data ?? {});
                     if (e.type === 'tool.execution_start')
                         sandbox.toolStarted(data);
+                    // A confirmed sandbox switched off mid-command: recorded in sandbox.stateEscape, nothing is counted.
+                    if (e.type === 'session.sandbox_state_changed')
+                        sandbox.stateChanged(data);
                     if (e.type === 'tool.execution_complete') {
                         attested.set(String(data.toolCallId ?? ''), data.sandboxed);
                         sandbox.toolCompleted(data);
@@ -356,6 +359,8 @@ export async function runSandboxed(argv, o, deps) {
         // The completion event can trail the RPC answer.
         for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100)
             await sleep(100);
+        if (sandbox.stateEscape)
+            return noVerdict(`${sandbox.stateEscape}; nothing is counted`);
         const escapes = sandbox.state?.unsandboxedCalls ?? 0;
         if (escapes > 0)
             return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);

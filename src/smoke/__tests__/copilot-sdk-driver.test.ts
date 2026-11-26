@@ -27,6 +27,7 @@ import {
   satisfiesSdkRange,
   sandboxCanaryCommand,
   sandboxCanaryLaunched,
+  spawnedClientOptions,
   type CopilotSdkModule,
   type LoadedSdk,
   type SdkClientOptions,
@@ -943,6 +944,16 @@ describe('SDK loading', () => {
     expect(globalModuleRoots({ APPDATA: 'C:\\Users\\u\\AppData\\Roaming', npm_config_prefix: 'C:\\evil' }, 'win32').map((p) => p.replace(/\\/g, '/')))
       .toEqual(['C:/Users/u/AppData/Roaming/npm/node_modules']);
     expect(globalModuleRoots({ npm_config_prefix: '/opt/npm', NPM_CONFIG_PREFIX: '/opt/npm' }, 'linux')).toEqual([]);
+  });
+
+  it('spawnedClientOptions refuses an empty or blank CLI path (the SDK would fall back to its bundled runtime)', () => {
+    const forSpawnedStdio = vi.fn((o: SpawnedStdioOptions) => o);
+    const loaded = { module: { CopilotClient: class {}, RuntimeConnection: { forSpawnedStdio } } as unknown as CopilotSdkModule };
+    for (const path of ['', '   ', '\t\n']) {
+      expect(() => spawnedClientOptions(loaded, { path }), JSON.stringify(path)).toThrow('the Copilot CLI path for the SDK connection is empty');
+    }
+    expect(forSpawnedStdio).not.toHaveBeenCalled();
+    expect(spawnedClientOptions(loaded, { path: '/usr/bin/copilot' }).runtime).toEqual({ path: '/usr/bin/copilot' });
   });
 
   it('satisfiesSdkRange is ^2.0.3', () => {

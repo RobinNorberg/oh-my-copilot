@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import type { LoadedSdk, SdkClientLike, SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
-import { DEFAULT_SANDBOX_SETTINGS, REVIEW_READ_TOOLS, type SandboxPolicyContext, type SandboxProfile, type SandboxSettings } from '../sandbox.js';
+import { DEFAULT_SANDBOX_SETTINGS, REVIEW_READ_TOOLS, isSandboxPolicyError, sandboxStateProblem, type SandboxPolicyContext, type SandboxProfile, type SandboxSettings } from '../sandbox.js';
 import { SessionSandboxController, sandboxBypassDenial, type SessionSandboxOptions } from '../sandbox-session.js';
-import { fakeClientRpc, fakeSessionRpc, type FakeSandbox } from './fake-sdk.js';
+import { POLICY_CONFLICT_MESSAGE, fakeClientRpc, fakeSessionRpc, type FakeSandbox } from './fake-sdk.js';
 
 const root = join(tmpdir(), 'omg-sandbox-session-test');
 const settingsWith = (over: Partial<SandboxSettings> = {}): SandboxSettings =>
@@ -68,9 +68,10 @@ describe('SessionSandboxController.decide/confirm', () => {
     expect(t.ctl.atCreate(config)).toBe(true);
     expect(t.ctl.atCreate(null)).toBe(false);
     await t.ctl.confirm(t.session, config!, true);
-    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'create', enforcement: { required: false, blocked: false } });
+    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'create', configSource: 'session_flag', enforcement: { required: false, blocked: false } });
     expect(t.ctl.state!.reason).toBeUndefined();
-    expect(t.updates).toEqual([]);
+    // Affirmative evidence after create: the same policy again through options.update (idempotent), then getState.
+    expect(t.updates).toEqual([{ permissions: { sandbox: config, sandboxSource: 'session_flag' } }]);
     expect(t.notes).toEqual([]);
   });
 
@@ -97,6 +98,38 @@ describe('SessionSandboxController.decide/confirm', () => {
     await d.ctl.decide(client('update-fails'), loadedSdk());
     d.ctl.createFailed('policy conflict');
     expect(d.ctl.state?.mode).toBe('detect-only');
+  });
+
+  it.each<[FakeSandbox, string]>([
+    ['ignored', 'sandbox.getState: the effective sandbox config is not enabled (enabled: false)'],
+    ['no-state', 'the SDK has no sandbox.getState RPC'],
+    ['state-throws', 'sandbox.getState failed: state unavailable'],
+    ['state-hangs', 'sandbox.getState failed: sandbox.getState() timed out after 1000 ms'],
+    ['opted-out', 'sandbox.getState: the session holds a sandbox opt-out (disabledForSession: true)'],
+  ])('policy at create, state not confirmed (%s): refused (write), read-only-no-shell (review), detect-only when allowed', async (mode, reason) => {
+    const w = setup(mode);
+    const config = await w.ctl.decide(client(mode), loadedSdk());
+    await w.ctl.confirm(w.session, config!, true);
+    expect(w.ctl.state).toMatchObject({ mode: 'refused', applied: 'create', reason });
+    expect(w.ctl.state!.enforcement).toBeUndefined();
+    const r = setup(mode, { profile: 'review' });
+    await r.ctl.confirm(r.session, (await r.ctl.decide(client(mode), loadedSdk()))!, true);
+    expect(r.ctl.state).toMatchObject({ mode: 'read-only-no-shell', reason });
+    expect(r.updates.at(-1)).toEqual({ tools: { availableTools: [...REVIEW_READ_TOOLS] } });
+    const d = setup(mode, { settings: { writeUnsandboxed: 'detect-only' } });
+    await d.ctl.confirm(d.session, (await d.ctl.decide(client(mode), loadedSdk()))!, true);
+    expect(d.ctl.state).toMatchObject({ mode: 'detect-only', reason });
+  });
+
+  it('ignored: a runtime that drops the create-time policy and reports enforcement { required: false, blocked: false } is not enforced', async () => {
+    const t = setup('ignored');
+    const config = await t.ctl.decide(client('ignored'), loadedSdk());
+    // As job.ts creates it: the session took the policy at create, and the runtime dropped it.
+    const session = { sessionId: 's-1', rpc: fakeSessionRpc('ignored', { optionsUpdates: [] }, config) } as unknown as SdkSessionLike;
+    const rpc = session.rpc as unknown as { sandbox: { getEnforcementStatus: () => Promise<unknown> } };
+    expect(await rpc.sandbox.getEnforcementStatus()).toEqual({ required: false, blocked: false });
+    await t.ctl.confirm(session, config!, true);
+    expect(t.ctl.state?.mode).toBe('refused');
   });
 
   it('unsupported: null and refused for a write session, detect-only with a note when allowed', async () => {
@@ -129,7 +162,7 @@ describe('SessionSandboxController.decide/confirm', () => {
     const t = setup('update-fails');
     const config = await t.ctl.decide(client('update-fails'), loadedSdk());
     await t.ctl.confirm(t.session, config!, false);
-    expect(t.ctl.state).toMatchObject({ mode: 'refused', reason: 'options.update failed: policy conflict', applied: 'none' });
+    expect(t.ctl.state).toMatchObject({ mode: 'refused', reason: `options.update failed: ${POLICY_CONFLICT_MESSAGE}`, applied: 'none' });
   });
 
   it('no-rpc: the host probe fails closed', async () => {
@@ -219,6 +252,78 @@ describe('SessionSandboxController attestation', () => {
     expect(t.ctl.toolCompleted({ toolCallId: 'c1', toolName: 'shell', sandboxed: false })).toBeNull();
     expect(t.ctl.toolCompleted({ toolCallId: 'c2' })).toBeNull();
     expect(t.ctl.state?.unsandboxedCalls).toBe(1);
+  });
+});
+
+describe('SessionSandboxController.stateChanged (session.sandbox_state_changed)', () => {
+  const inForce = (over: Record<string, unknown> = {}, config: Record<string, unknown> = { enabled: true, allowBypass: false }) =>
+    ({ incarnation: 1, revision: 2, config, configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: null, ...over });
+
+  async function enforced() {
+    const t = setup('supported');
+    const config = await t.ctl.decide(client('supported'), loadedSdk());
+    await t.ctl.confirm(t.session, config!, true);
+    expect(t.ctl.state?.mode).toBe('enforced');
+    return t.ctl;
+  }
+
+  it('a state that keeps the policy in force passes', async () => {
+    const ctl = await enforced();
+    expect(ctl.stateChanged(inForce())).toBeNull();
+    expect(ctl.stateEscape).toBeNull();
+  });
+
+  it.each<[string, Record<string, unknown>, string]>([
+    ['disabledForSession', inForce({ disabledForSession: true }), 'the session holds a sandbox opt-out (disabledForSession: true)'],
+    ['config.enabled false', inForce({}, { enabled: false }), 'the effective sandbox config is not enabled (enabled: false)'],
+    ['autoApproveBypass', inForce({ autoApproveBypass: true }), 'the session auto-approves sandbox bypass requests (autoApproveBypass: true)'],
+    ['allowBypass', inForce({}, { enabled: true, allowBypass: true }), 'the effective sandbox config allows bypass requests'],
+    ['no config', inForce({ config: null }), 'the sandbox state has no effective config'],
+  ])('%s in an enforced session is an escape', async (_label, data, problem) => {
+    const ctl = await enforced();
+    const why = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+    expect(ctl.stateChanged(data)).toBe(why);
+    expect(ctl.stateEscape).toBe(why);
+    // Reported once.
+    expect(ctl.stateChanged(data)).toBeNull();
+  });
+
+  it('before confirm or in a session that is not enforced it is ignored (confirm reads the state itself)', async () => {
+    const t = setup('supported');
+    await t.ctl.decide(client('supported'), loadedSdk());
+    expect(t.ctl.stateChanged(inForce({ disabledForSession: true }))).toBeNull();
+    const d = setup('unsupported', { settings: { writeUnsandboxed: 'detect-only' } });
+    await d.ctl.decide(client('unsupported'), loadedSdk());
+    expect(d.ctl.stateChanged(inForce({}, { enabled: false }))).toBeNull();
+  });
+});
+
+describe('sandboxStateProblem', () => {
+  it('needs config.enabled true, no bypass, no opt-out; wrong types count as not in force', () => {
+    const ok = { config: { enabled: true, allowBypass: false }, disabledForSession: false, autoApproveBypass: false };
+    expect(sandboxStateProblem(ok)).toBeNull();
+    // allowBypass absent: the runtime's default offers no bypass.
+    expect(sandboxStateProblem({ ...ok, config: { enabled: true } })).toBeNull();
+    expect(sandboxStateProblem(null)).toBe('no sandbox state');
+    expect(sandboxStateProblem({ ...ok, config: { enabled: 'true' } })).toMatch(/not enabled/);
+    expect(sandboxStateProblem({ ...ok, disabledForSession: undefined })).toMatch(/opt-out/);
+    expect(sandboxStateProblem({ ...ok, autoApproveBypass: 'no' })).toMatch(/auto-approves/);
+  });
+});
+
+describe('isSandboxPolicyError', () => {
+  it('a policy conflict, an invalid sandbox config or a JSON-RPC error naming the conflict code is a sandbox error', () => {
+    expect(isSandboxPolicyError(new Error(POLICY_CONFLICT_MESSAGE))).toBe(true);
+    expect(isSandboxPolicyError(new Error("invalid parameter 'sandboxConfig': userPolicy must be an object"))).toBe(true);
+    expect(isSandboxPolicyError(Object.assign(new Error('Request failed'), { code: -32603, data: { code: 'managed_sandbox_policy_conflict' } }))).toBe(true);
+  });
+
+  it('auth, network and model errors are not', () => {
+    expect(isSandboxPolicyError(new Error('authentication failed: 401 Unauthorized'))).toBe(false);
+    expect(isSandboxPolicyError(new Error('connect ECONNREFUSED 127.0.0.1:443'))).toBe(false);
+    expect(isSandboxPolicyError(new Error('Model "gpt-x" is not available'))).toBe(false);
+    expect(isSandboxPolicyError(new Error('You are not authorized to use this Copilot feature, it requires an enterprise or organization policy to be enabled.'))).toBe(false);
+    expect(isSandboxPolicyError('socket hang up')).toBe(false);
   });
 });
 

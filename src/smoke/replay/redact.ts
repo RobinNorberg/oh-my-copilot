@@ -341,6 +341,14 @@ const SHELL_OUTPUT_KEY = 'tool.shell_output';
  * `response.function_call_arguments.delta`, ...) per item and part.
  */
 function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
+  return [...deltaStreamMap(events).values()];
+}
+
+/** A `tool.shell_output` chunk's `sequence` (a chunk without one sorts last). */
+const shellSequence = (slot: DeltaSlot) => (typeof slot.holder.sequence === 'number' ? slot.holder.sequence : Number.MAX_SAFE_INTEGER);
+
+/** {@link deltaStreams} by stream key (`tool.shell_output:<toolCallId>:<stream>` for shell output). */
+function deltaStreamMap(events: readonly unknown[]): Map<string, DeltaSlot[]> {
   const streams = new Map<string, DeltaSlot[]>();
   const add = (key: string, event: number, holder: Record<string, unknown>, field: string) => {
     if (typeof holder[field] !== 'string') return;
@@ -388,9 +396,8 @@ function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
-  const seq = (slot: DeltaSlot) => (typeof slot.holder.sequence === 'number' ? slot.holder.sequence : Number.MAX_SAFE_INTEGER);
-  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => seq(a) - seq(b) || a.event - b.event);
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 
 const joinDeltas = (slots: readonly DeltaSlot[]) => slots.map((s) => s.holder[s.field] as string).join('');
@@ -401,7 +408,20 @@ const joinDeltas = (slots: readonly DeltaSlot[]) => slots.map((s) => s.holder[s.
  * only shows once its deltas are joined.
  */
 export function reassembledDeltas(events: readonly unknown[]): string[] {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  // `tool.shell_output` `sequence` runs across every stream of a tool call (SDK v2), so a secret printed half to
+  // stdout and half to stderr only shows once the call's streams are joined in that order. Redaction stays per
+  // stream (a redaction cannot span two streams); the gate (detect-only) also scans each call's streams joined.
+  const calls = new Map<string, DeltaSlot[][]>();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...(calls.get(call) ?? []), slots]);
+  }
+  const crossStream = [...calls.values()]
+    .filter((perStream) => perStream.length > 1)
+    .map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 
 /** Each WebSocket message's parsed JSON (undefined when it is not JSON). */

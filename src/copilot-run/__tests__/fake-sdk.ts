@@ -7,15 +7,27 @@ import { join } from 'node:path';
 import type { CopilotRunDeps } from '../job.js';
 import type { LoadedSdk, SdkSessionConfig, SpawnedStdioOptions } from '../../smoke/copilot-sdk-driver.js';
 
-/** `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles. */
-export type FakeBehavior = 'idle' | 'commit' | 'hang';
+/**
+ * `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles.
+ * `sandbox-off`: reports the session's sandbox opted out (`session.sandbox_state_changed`) mid-turn, then answers and idles.
+ */
+export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off';
 
 /**
  * The fake runtime's sandbox: `supported` (default) confirms it; `unsupported`
  * reports no host support; `blocked` reports enforcement blocked;
- * `update-fails` rejects options.update and a createSession that carries a sandbox (a v2 policy conflict at create); `no-rpc` has no sandbox RPCs.
+ * `update-fails` rejects options.update and a createSession that carries a sandbox (a v2 policy conflict at create,
+ * with Copilot CLI 1.0.116's message); `no-rpc` has no sandbox RPCs. `ignored`: a runtime that silently drops the
+ * policy (create and options.update succeed, enforcement reads `{ required: false, blocked: false }`, getState shows
+ * no enabled sandbox). `no-state` has no sandbox.getState RPC; `state-throws` / `state-hangs`: getState throws or
+ * never answers; `opted-out`: getState reports `disabledForSession: true`. `create-fails`: every createSession
+ * fails with an auth error that is not a sandbox error.
  */
-export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc';
+export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc'
+  | 'ignored' | 'no-state' | 'state-throws' | 'state-hangs' | 'opted-out' | 'create-fails';
+
+/** The runtime's refusal of a policy that conflicts with managed policy (Copilot CLI 1.0.116). */
+export const POLICY_CONFLICT_MESSAGE = 'Sandbox configuration update violates managed policy. Contact your administrator for more information.';
 
 export interface FakeCalls {
   connections: SpawnedStdioOptions[];
@@ -44,18 +56,40 @@ export function fakeClientRpc(sandbox: FakeSandbox, deniedPaths = false): unknow
   };
 }
 
-/** The session `rpc` of a fake session with sandbox support `sandbox`. */
-export function fakeSessionRpc(sandbox: FakeSandbox, calls: { optionsUpdates: Array<Record<string, unknown>> }): never {
+/** The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took. */
+export function fakeSessionRpc(sandbox: FakeSandbox, calls: { optionsUpdates: Array<Record<string, unknown>> }, created?: unknown): never {
   if (sandbox === 'no-rpc') return {} as never;
+  // The effective config, as getState reports it: what create or options.update applied, unless the runtime drops it.
+  let effective: unknown = sandbox === 'ignored' ? undefined : created;
+  const state = () => ({
+    incarnation: 1,
+    revision: 1,
+    config: effective ?? { enabled: false },
+    configSource: effective ? 'session_flag' : 'never_configured',
+    disabledForSession: sandbox === 'opted-out',
+    autoApproveBypass: false,
+    sessionOverride: null,
+  });
   return {
     options: {
       update: async (params: Record<string, unknown>) => {
         calls.optionsUpdates.push(params);
-        if (sandbox === 'update-fails') throw new Error('policy conflict');
+        if (sandbox === 'update-fails') throw new Error(POLICY_CONFLICT_MESSAGE);
+        const next = (params.permissions as { sandbox?: unknown } | undefined)?.sandbox;
+        if (next !== undefined && sandbox !== 'ignored') effective = next;
         return { success: true };
       },
     },
-    sandbox: { getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }) },
+    sandbox: {
+      getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }),
+      ...(sandbox === 'no-state' ? {} : {
+        getState: async () => {
+          if (sandbox === 'state-throws') throw new Error('state unavailable');
+          if (sandbox === 'state-hangs') return new Promise(() => {});
+          return state();
+        },
+      }),
+    },
   } as never;
 }
 
@@ -69,13 +103,16 @@ export const gitIn = (cwd: string, ...args: string[]) =>
 export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeSandbox = 'supported', deniedPaths = false): LoadedSdk {
   class Session {
     sessionId = `sess-${calls.sessions.length}`;
-    rpc = fakeSessionRpc(sandbox, calls);
-    constructor(private readonly cfg: SdkSessionConfig) {}
+    rpc: never;
+    constructor(private readonly cfg: SdkSessionConfig) { this.rpc = fakeSessionRpc(sandbox, calls, cfg.permissions.sandbox); }
     private emit(type: string, data: Record<string, unknown> = {}) { this.cfg.events?.onEvent?.({ type, data }); }
     async send({ prompt }: { prompt: string }) {
       calls.prompts.push(prompt);
       setTimeout(() => {
         if (behavior === 'hang') return;
+        if (behavior === 'sandbox-off') {
+          this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false });
+        }
         if (behavior === 'commit') {
           writeFileSync(join(this.cfg.workingDirectory, 'lane.txt'), 'lane work\n');
           gitIn(this.cfg.workingDirectory, 'add', 'lane.txt');
@@ -99,7 +136,8 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeS
     async listModels() { return []; }
     async createSession(cfg: SdkSessionConfig) {
       calls.sessions.push(cfg);
-      if (sandbox === 'update-fails' && cfg.permissions.sandbox) throw new Error('policy conflict');
+      if (sandbox === 'update-fails' && cfg.permissions.sandbox) throw new Error(POLICY_CONFLICT_MESSAGE);
+      if (sandbox === 'create-fails') throw new Error('authentication failed: 401 Unauthorized');
       return new Session(cfg);
     }
     async deleteSession() {}

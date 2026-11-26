@@ -218,6 +218,9 @@ export interface CopilotSdkModule {
  * this codebase is built here, in `coding-agent` mode (v1's implicit default).
  */
 export function spawnedClientOptions(loaded: Pick<LoadedSdk, 'module'>, conn: SpawnedStdioOptions & { path: string }, extra: Pick<SdkClientOptions, 'github'> = {}): SdkClientOptions {
+  // The SDK reads `conn.path ?? COPILOT_CLI_PATH` and, failing both, launches its own bundled runtime: an empty
+  // path must never become a runtime other than the one the caller resolved and checked.
+  if (typeof conn.path !== 'string' || conn.path.trim() === '') throw new Error('the Copilot CLI path for the SDK connection is empty');
   return { mode: 'coding-agent', runtime: loaded.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 
@@ -386,9 +389,16 @@ export async function loadCopilotSdk(env: NodeJS.ProcessEnv = process.env, spawn
 
 async function findCopilotSdk(env: NodeJS.ProcessEnv, spawnSync: SpawnSyncFn): Promise<LoadedSdk | null> {
   const spec = SDK_PACKAGE; // a variable keeps tsc and esbuild from resolving the optional package at build time
+  // A package node resolves (a project-local one included) must be in range like a global one: one outside it is
+  // skipped for the global roots, and named in the error when nothing else is found.
+  let outOfRange: string | null = null;
   try {
     const mod = await import(spec) as unknown;
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: 'node resolution' };
+    if (isSdkModule(mod)) {
+      const version = nodeResolvedVersion();
+      if (satisfiesSdkRange(version)) return { module: mod, version, from: 'node resolution' };
+      outOfRange = version ?? 'an unknown version';
+    }
   } catch { /* not resolvable from here */ }
   const tried = new Set<string>();
   const tryRoot = async (root: string | null) => {
@@ -402,7 +412,9 @@ async function findCopilotSdk(env: NodeJS.ProcessEnv, spawnSync: SpawnSyncFn): P
     const hit = await tryRoot(root);
     if (hit) return hit;
   }
-  return tryRoot(npmRootG(env, spawnSync));
+  const hit = await tryRoot(npmRootG(env, spawnSync));
+  if (!hit && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit;
 }
 
 /**

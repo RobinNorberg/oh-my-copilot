@@ -3,6 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+/** The runtime's refusal of a policy that conflicts with managed policy (Copilot CLI 1.0.116). */
+export const POLICY_CONFLICT_MESSAGE = 'Sandbox configuration update violates managed policy. Contact your administrator for more information.';
 export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
 /** The server `rpc` of a fake client with sandbox support `sandbox` (`deniedPaths`: the host reports denied_paths). */
 export function fakeClientRpc(sandbox, deniedPaths = false) {
@@ -19,20 +21,45 @@ export function fakeClientRpc(sandbox, deniedPaths = false) {
         },
     };
 }
-/** The session `rpc` of a fake session with sandbox support `sandbox`. */
-export function fakeSessionRpc(sandbox, calls) {
+/** The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took. */
+export function fakeSessionRpc(sandbox, calls, created) {
     if (sandbox === 'no-rpc')
         return {};
+    // The effective config, as getState reports it: what create or options.update applied, unless the runtime drops it.
+    let effective = sandbox === 'ignored' ? undefined : created;
+    const state = () => ({
+        incarnation: 1,
+        revision: 1,
+        config: effective ?? { enabled: false },
+        configSource: effective ? 'session_flag' : 'never_configured',
+        disabledForSession: sandbox === 'opted-out',
+        autoApproveBypass: false,
+        sessionOverride: null,
+    });
     return {
         options: {
             update: async (params) => {
                 calls.optionsUpdates.push(params);
                 if (sandbox === 'update-fails')
-                    throw new Error('policy conflict');
+                    throw new Error(POLICY_CONFLICT_MESSAGE);
+                const next = params.permissions?.sandbox;
+                if (next !== undefined && sandbox !== 'ignored')
+                    effective = next;
                 return { success: true };
             },
         },
-        sandbox: { getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }) },
+        sandbox: {
+            getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }),
+            ...(sandbox === 'no-state' ? {} : {
+                getState: async () => {
+                    if (sandbox === 'state-throws')
+                        throw new Error('state unavailable');
+                    if (sandbox === 'state-hangs')
+                        return new Promise(() => { });
+                    return state();
+                },
+            }),
+        },
     };
 }
 export const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], {
@@ -44,9 +71,10 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
     class Session {
         cfg;
         sessionId = `sess-${calls.sessions.length}`;
-        rpc = fakeSessionRpc(sandbox, calls);
+        rpc;
         constructor(cfg) {
             this.cfg = cfg;
+            this.rpc = fakeSessionRpc(sandbox, calls, cfg.permissions.sandbox);
         }
         emit(type, data = {}) { this.cfg.events?.onEvent?.({ type, data }); }
         async send({ prompt }) {
@@ -54,6 +82,9 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
             setTimeout(() => {
                 if (behavior === 'hang')
                     return;
+                if (behavior === 'sandbox-off') {
+                    this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false });
+                }
                 if (behavior === 'commit') {
                     writeFileSync(join(this.cfg.workingDirectory, 'lane.txt'), 'lane work\n');
                     gitIn(this.cfg.workingDirectory, 'add', 'lane.txt');
@@ -78,7 +109,9 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
         async createSession(cfg) {
             calls.sessions.push(cfg);
             if (sandbox === 'update-fails' && cfg.permissions.sandbox)
-                throw new Error('policy conflict');
+                throw new Error(POLICY_CONFLICT_MESSAGE);
+            if (sandbox === 'create-fails')
+                throw new Error('authentication failed: 401 Unauthorized');
             return new Session(cfg);
         }
         async deleteSession() { }

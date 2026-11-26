@@ -44,6 +44,8 @@ export interface CopilotRunSandboxState {
   host: SandboxHostRecord;
   applied: 'create' | 'options.update' | 'none';
   enforcement?: { required: boolean; blocked: boolean; reason?: string };
+  /** `sandbox.getState().configSource` once the state confirmed the policy in force. */
+  configSource?: string;
   /** PR 1 runs no canary: confirmation rests on host support, the applied config, enforcement and the per-call attestation. */
   canary: 'passed' | 'failed' | 'skipped';
   /** Shell calls the runtime reported as not sandboxed. */
@@ -1022,6 +1024,64 @@ export async function readEnforcement(session: unknown, timeoutMs: number): Prom
   } catch (err) {
     return `sandbox.getEnforcementStatus failed: ${errText(err)}`;
   }
+}
+
+/**
+ * Why a sandbox state (`session.rpc.sandbox.getState()` or a
+ * `session.sandbox_state_changed` event's data, both carry the same fields)
+ * does not show the policy in force, else null: the effective config must be
+ * enabled and must not offer bypasses (our policy sets `allowBypass: false`; a
+ * managed floor can only tighten it), and the session must hold no opt-out
+ * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
+ * A field of the wrong type counts as not in force.
+ */
+export function sandboxStateProblem(state: unknown): string | null {
+  if (!state || typeof state !== 'object') return 'no sandbox state';
+  const s = state as { config?: unknown; disabledForSession?: unknown; autoApproveBypass?: unknown };
+  const config = s.config && typeof s.config === 'object' && !Array.isArray(s.config) ? s.config as { enabled?: unknown; allowBypass?: unknown } : null;
+  if (!config) return 'the sandbox state has no effective config';
+  if (config.enabled !== true) return `the effective sandbox config is not enabled (enabled: ${String(config.enabled)})`;
+  if (config.allowBypass === true) return 'the effective sandbox config allows bypass requests';
+  if (s.disabledForSession !== false) return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+  if (s.autoApproveBypass !== false) return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+  return null;
+}
+
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy is in force ({@link sandboxStateProblem}), else why not. */
+export async function readSandboxState(session: unknown, timeoutMs: number): Promise<{ configSource: string } | string> {
+  const call = rpcMethod(session, ['rpc', 'sandbox'], 'getState') as (() => Promise<unknown>) | null;
+  if (!call) return 'the SDK has no sandbox.getState RPC';
+  try {
+    const res = await withTimeout(call(), timeoutMs, 'sandbox.getState()');
+    const problem = sandboxStateProblem(res);
+    if (problem) return `sandbox.getState: ${problem}`;
+    const source = (res as { configSource?: unknown }).configSource;
+    return { configSource: typeof source === 'string' ? source : 'unknown' };
+  } catch (err) {
+    return `sandbox.getState failed: ${errText(err)}`;
+  }
+}
+
+/**
+ * Whether a createSession error with the sandbox policy is the runtime refusing
+ * the policy (a managed-policy conflict or an invalid config), the only create
+ * failure the fail-closed sandbox path handles; any other (network, auth,
+ * model) is an ordinary create failure. Copilot CLI 1.0.116's runtime refuses
+ * a conflicting policy with "Sandbox configuration update violates managed
+ * policy. Contact your administrator for more information." (code
+ * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
+ * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
+ * policy could not be resolved: ...". How the code reaches the SDK (message or
+ * JSON-RPC error data) is not documented, so this matches the message, code
+ * and data as text, conservatively: anything naming the sandbox or a managed
+ * policy counts as a sandbox error.
+ */
+export function isSandboxPolicyError(err: unknown): boolean {
+  const e = err as { message?: unknown; code?: unknown; data?: unknown } | null;
+  let data = '';
+  try { data = e?.data === undefined ? '' : JSON.stringify(e.data); } catch { /* unserializable */ }
+  const text = [errText(err), typeof e?.code === 'string' ? e.code : '', data].join('\n');
+  return /sandbox|managed[ _]policy/i.test(text);
 }
 
 /**

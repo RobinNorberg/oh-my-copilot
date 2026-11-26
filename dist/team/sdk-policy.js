@@ -366,7 +366,11 @@ const KIND_TOOLS = {
 /**
  * Built-in tools that start or drive other agents. A worker is one agent on
  * one credit cap; these would fan out work (and spend) outside the team's
- * task and claim protocol.
+ * task and claim protocol. `send_inbox` messages other agents (the runtime's
+ * sidekick agents, the caller); `context_board` edits the dynamic context board
+ * that a background agent consolidates and later sessions read: SDK v2 lists
+ * both beside `task` and the `*_agent` tools (`BuiltInTools.Isolated`), and a
+ * worker needs neither.
  */
 export const SDK_AGENT_FANOUT_TOOLS = [
     'task',
@@ -376,6 +380,8 @@ export const SDK_AGENT_FANOUT_TOOLS = [
     'read_agent',
     'list_agents',
     'search_code_subagent',
+    'send_inbox',
+    'context_board',
 ];
 /**
  * `excludedTools` for an SDK worker session: the recursion fence (the

@@ -445,6 +445,14 @@ describe('review fixes round 5 (#349)', () => {
     ]);
     expect(joined).toEqual(['set password=hunter2hunter2 now']);
   });
+  it('the gate also joins one tool call\'s stdout and stderr in sequence order (detect-only)', () => {
+    const joined = reassembledDeltas([
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 1, stream: 'stderr', text: 'hunter2hunter2 now' } },
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 0, text: 'set password=' } },
+      { type: 'tool.shell_output', data: { toolCallId: 't2', sequence: 0, stream: 'stderr', text: 'other call' } },
+    ]);
+    expect(joined).toEqual(['set password=hunter2hunter2 now']);
+  });
   it('redactResponse joins nested Chat Completions delta.audio.transcript', () => {
     const chunks = split('say password=hunter2hunter2 ok', [19]).map((transcript) =>
       `data: ${JSON.stringify({ choices: [{ index: 0, delta: { audio: { transcript } } }] })}\n\n`);

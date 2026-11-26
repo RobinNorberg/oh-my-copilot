@@ -916,6 +916,73 @@ export async function readEnforcement(session, timeoutMs) {
     }
 }
 /**
+ * Why a sandbox state (`session.rpc.sandbox.getState()` or a
+ * `session.sandbox_state_changed` event's data, both carry the same fields)
+ * does not show the policy in force, else null: the effective config must be
+ * enabled and must not offer bypasses (our policy sets `allowBypass: false`; a
+ * managed floor can only tighten it), and the session must hold no opt-out
+ * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
+ * A field of the wrong type counts as not in force.
+ */
+export function sandboxStateProblem(state) {
+    if (!state || typeof state !== 'object')
+        return 'no sandbox state';
+    const s = state;
+    const config = s.config && typeof s.config === 'object' && !Array.isArray(s.config) ? s.config : null;
+    if (!config)
+        return 'the sandbox state has no effective config';
+    if (config.enabled !== true)
+        return `the effective sandbox config is not enabled (enabled: ${String(config.enabled)})`;
+    if (config.allowBypass === true)
+        return 'the effective sandbox config allows bypass requests';
+    if (s.disabledForSession !== false)
+        return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+    if (s.autoApproveBypass !== false)
+        return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+    return null;
+}
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy is in force ({@link sandboxStateProblem}), else why not. */
+export async function readSandboxState(session, timeoutMs) {
+    const call = rpcMethod(session, ['rpc', 'sandbox'], 'getState');
+    if (!call)
+        return 'the SDK has no sandbox.getState RPC';
+    try {
+        const res = await withTimeout(call(), timeoutMs, 'sandbox.getState()');
+        const problem = sandboxStateProblem(res);
+        if (problem)
+            return `sandbox.getState: ${problem}`;
+        const source = res.configSource;
+        return { configSource: typeof source === 'string' ? source : 'unknown' };
+    }
+    catch (err) {
+        return `sandbox.getState failed: ${errText(err)}`;
+    }
+}
+/**
+ * Whether a createSession error with the sandbox policy is the runtime refusing
+ * the policy (a managed-policy conflict or an invalid config), the only create
+ * failure the fail-closed sandbox path handles; any other (network, auth,
+ * model) is an ordinary create failure. Copilot CLI 1.0.116's runtime refuses
+ * a conflicting policy with "Sandbox configuration update violates managed
+ * policy. Contact your administrator for more information." (code
+ * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
+ * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
+ * policy could not be resolved: ...". How the code reaches the SDK (message or
+ * JSON-RPC error data) is not documented, so this matches the message, code
+ * and data as text, conservatively: anything naming the sandbox or a managed
+ * policy counts as a sandbox error.
+ */
+export function isSandboxPolicyError(err) {
+    const e = err;
+    let data = '';
+    try {
+        data = e?.data === undefined ? '' : JSON.stringify(e.data);
+    }
+    catch { /* unserializable */ }
+    const text = [errText(err), typeof e?.code === 'string' ? e.code : '', data].join('\n');
+    return /sandbox|managed[ _]policy/i.test(text);
+}
+/**
  * What a session runs as when its sandbox is not confirmed (§3):
  * review -> `read-only-no-shell` (or `refused` with reviewUnsandboxed
  * "refuse"), write -> `refused` (or `detect-only` with writeUnsandboxed

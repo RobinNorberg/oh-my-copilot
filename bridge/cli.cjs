@@ -59688,7 +59688,9 @@ var init_sdk_policy = __esm({
       "write_agent",
       "read_agent",
       "list_agents",
-      "search_code_subagent"
+      "search_code_subagent",
+      "send_inbox",
+      "context_board"
     ];
   }
 });
@@ -60283,6 +60285,40 @@ async function readEnforcement(session, timeoutMs) {
     return `sandbox.getEnforcementStatus failed: ${errText2(err)}`;
   }
 }
+function sandboxStateProblem(state) {
+  if (!state || typeof state !== "object") return "no sandbox state";
+  const s = state;
+  const config2 = s.config && typeof s.config === "object" && !Array.isArray(s.config) ? s.config : null;
+  if (!config2) return "the sandbox state has no effective config";
+  if (config2.enabled !== true) return `the effective sandbox config is not enabled (enabled: ${String(config2.enabled)})`;
+  if (config2.allowBypass === true) return "the effective sandbox config allows bypass requests";
+  if (s.disabledForSession !== false) return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+  if (s.autoApproveBypass !== false) return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+  return null;
+}
+async function readSandboxState(session, timeoutMs) {
+  const call = rpcMethod(session, ["rpc", "sandbox"], "getState");
+  if (!call) return "the SDK has no sandbox.getState RPC";
+  try {
+    const res = await withTimeout2(call(), timeoutMs, "sandbox.getState()");
+    const problem = sandboxStateProblem(res);
+    if (problem) return `sandbox.getState: ${problem}`;
+    const source2 = res.configSource;
+    return { configSource: typeof source2 === "string" ? source2 : "unknown" };
+  } catch (err) {
+    return `sandbox.getState failed: ${errText2(err)}`;
+  }
+}
+function isSandboxPolicyError(err) {
+  const e2 = err;
+  let data = "";
+  try {
+    data = e2?.data === void 0 ? "" : JSON.stringify(e2.data);
+  } catch {
+  }
+  const text9 = [errText2(err), typeof e2?.code === "string" ? e2.code : "", data].join("\n");
+  return /sandbox|managed[ _]policy/i.test(text9);
+}
 function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
@@ -60698,6 +60734,9 @@ function withSseData(block2, value) {
   return lines4.flatMap((l, i) => !l.startsWith("data:") ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : []).join("\n");
 }
 function deltaStreams(events) {
+  return [...deltaStreamMap(events).values()];
+}
+function deltaStreamMap(events) {
   const streams = /* @__PURE__ */ new Map();
   const add2 = (key, event, holder, field) => {
     if (typeof holder[field] !== "string") return;
@@ -60736,12 +60775,19 @@ function deltaStreams(events) {
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add2(`${value.type}:${ids2}:${field}`, event, data, field);
     }
   });
-  const seq = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
-  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => seq(a) - seq(b) || a.event - b.event);
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 function reassembledDeltas(events) {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  const calls = /* @__PURE__ */ new Map();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...calls.get(call) ?? [], slots]);
+  }
+  const crossStream = [...calls.values()].filter((perStream) => perStream.length > 1).map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 function wsData(messages) {
   return messages.map((m) => parseJson(m.data));
@@ -60836,7 +60882,7 @@ function scanForSecrets(text9, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp3, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord5, SSE_EOL, SHELL_OUTPUT_KEY, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp3, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord5, SSE_EOL, SHELL_OUTPUT_KEY, shellSequence, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -60935,6 +60981,7 @@ var init_redact = __esm({
     isRecord5 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
     SHELL_OUTPUT_KEY = "tool.shell_output";
+    shellSequence = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -62681,6 +62728,7 @@ __export(copilot_sdk_driver_exports, {
   spawnedClientOptions: () => spawnedClientOptions
 });
 function spawnedClientOptions(loaded2, conn, extra = {}) {
+  if (typeof conn.path !== "string" || conn.path.trim() === "") throw new Error("the Copilot CLI path for the SDK connection is empty");
   return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 function isSdkModule(mod) {
@@ -62795,9 +62843,14 @@ async function loadCopilotSdk(env2 = process.env, spawnSync25 = import_child_pro
 }
 async function findCopilotSdk(env2, spawnSync25) {
   const spec = SDK_PACKAGE;
+  let outOfRange = null;
   try {
     const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+    if (isSdkModule(mod)) {
+      const version3 = nodeResolvedVersion();
+      if (satisfiesSdkRange(version3)) return { module: mod, version: version3, from: "node resolution" };
+      outOfRange = version3 ?? "an unknown version";
+    }
   } catch {
   }
   const tried = /* @__PURE__ */ new Set();
@@ -62813,10 +62866,12 @@ async function findCopilotSdk(env2, spawnSync25) {
     }
   };
   for (const root of globalModuleRoots(env2)) {
-    const hit2 = await tryRoot(root);
-    if (hit2) return hit2;
+    const hit3 = await tryRoot(root);
+    if (hit3) return hit3;
   }
-  return tryRoot(npmRootG(env2, spawnSync25));
+  const hit2 = await tryRoot(npmRootG(env2, spawnSync25));
+  if (!hit2 && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit2;
 }
 function findLegacySdkVersion(env2 = process.env, spawnSync25 = import_child_process16.spawnSync) {
   const roots = [...globalModuleRoots(env2)];
@@ -125267,11 +125322,13 @@ var init_sandbox_session = __esm({
       }
       /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
       state = null;
+      /** The `sandbox-escaped:` error once a `session.sandbox_state_changed` event showed the policy no longer in force. */
+      stateEscape = null;
       toolNames = /* @__PURE__ */ new Map();
       /**
        * Whether createSession takes `config`: always when there is one, since SDK v2
-       * forwards `permissions.sandbox` at create (v1 1.0.16 did not, hence the
-       * options.update path in confirm). Enforcement is still confirmed after create.
+       * forwards `permissions.sandbox` at create (v1 1.0.16 did not). confirm still
+       * demands affirmative evidence after create: a runtime drops an unknown create field silently.
        */
       atCreate(config2) {
         return config2 !== null;
@@ -125322,13 +125379,28 @@ var init_sandbox_session = __esm({
           return null;
         }
       }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      /**
+       * Demand affirmative evidence that `config` is in force; downgrade to the
+       * fail-closed mode on any doubt. The runtime drops a create-time field it
+       * does not know without an error, and getEnforcementStatus reports
+       * `{ required: false, blocked: false }` for a session with no sandbox at
+       * all, so neither proves anything alone: the same policy is (re)sent through
+       * options.update, which must report success (identical to the create-time
+       * policy it is idempotent and restarts no MCP server, SDK v2 types.d.ts
+       * SessionPermissionOptions.sandbox), then sandbox.getState must show it in
+       * force ({@link sandboxStateProblem}), then enforcement must not be blocked.
+       */
       async confirm(session, config2, atCreate) {
         const { opts } = this;
         const sbx = this.state;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        let why = await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
         if (!why) {
           sbx.applied = atCreate ? "create" : "options.update";
+          const state = await readSandboxState(session, opts.rpcTimeoutMs);
+          if (typeof state === "string") why = state;
+          else sbx.configSource = state.configSource;
+        }
+        if (!why) {
           const enf = await readEnforcement(session, opts.rpcTimeoutMs);
           if (typeof enf === "string") why = enf;
           else {
@@ -125350,9 +125422,10 @@ var init_sandbox_session = __esm({
         }
       }
       /**
-       * createSession with the policy (`permissions.sandbox`) failed: SDK v2 applies
-       * it at create, so a policy conflict fails the create itself (SDK v1 1.0.16
-       * failed the later options.update instead). Sets the fail-closed mode with the
+       * createSession with the policy (`permissions.sandbox`) failed with a sandbox
+       * policy error (`isSandboxPolicyError` in sandbox.ts; the caller throws any other
+       * error as an ordinary create failure): SDK v2 applies the policy at create,
+       * so a policy conflict fails the create itself. Sets the fail-closed mode with the
        * reason, as confirm does: `refused` creates no session, while a review
        * (`read-only-no-shell`) or `detect-only` write session is created again
        * without the policy (the caller's createSession, without the shell tools for a review).
@@ -125367,6 +125440,21 @@ var init_sandbox_session = __esm({
         sbx.reason = why;
         if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
         if (sbx.mode === "read-only-no-shell") opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+      }
+      /**
+       * `session.sandbox_state_changed` data: a tripwire once the sandbox is
+       * confirmed. In an enforced session a state that no longer shows the policy
+       * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses) is
+       * an escape: returns the `sandbox-escaped:` error (also kept in
+       * `stateEscape`), else null. Before confirm (create-time transitions) and in
+       * any other mode it returns null; confirm reads the state itself.
+       */
+      stateChanged(data) {
+        if (this.state?.mode !== "enforced" || this.stateEscape) return null;
+        const problem = sandboxStateProblem(data);
+        if (!problem) return null;
+        this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+        return this.stateEscape;
       }
       /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
       toolStarted(data) {
@@ -126575,6 +126663,14 @@ var init_job = __esm({
             case "tool.execution_start":
               sandbox.toolStarted(data);
               break;
+            case "session.sandbox_state_changed": {
+              const escaped = sandbox.stateChanged(data);
+              if (escaped && !job.stopReason) {
+                job.error = `${escaped}; the session was stopped`;
+                job.requestStop("sandbox-escaped");
+              }
+              break;
+            }
             case "tool.execution_complete": {
               const escaped = sandbox.toolCompleted(data);
               if (escaped && !job.stopReason) {
@@ -126672,7 +126768,7 @@ var init_job = __esm({
             try {
               session = await create(atCreate, sandboxConfig !== null);
             } catch (err) {
-              if (!atCreate || err instanceof TimeoutError) throw err;
+              if (!atCreate || err instanceof TimeoutError || !isSandboxPolicyError(err)) throw err;
               created = false;
               sandbox.createFailed(errText(err));
               job.sandbox = sandbox.state;
@@ -129961,6 +130057,7 @@ async function runSandboxed(argv, o, deps) {
         onEvent: (e2) => {
           const data = e2.data ?? {};
           if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
+          if (e2.type === "session.sandbox_state_changed") sandbox.stateChanged(data);
           if (e2.type === "tool.execution_complete") {
             attested.set(String(data.toolCallId ?? ""), data.sandboxed);
             sandbox.toolCompleted(data);
@@ -130003,6 +130100,7 @@ async function runSandboxed(argv, o, deps) {
     const r = answer !== "timeout" && "value" in answer ? answer.value : null;
     const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
     for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
+    if (sandbox.stateEscape) return noVerdict(`${sandbox.stateEscape}; nothing is counted`);
     const escapes = sandbox.state?.unsandboxedCalls ?? 0;
     if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
     if (!id || attested.get(id) !== true) {

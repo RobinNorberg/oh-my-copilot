@@ -292,7 +292,7 @@ describe('sdk permission policy', () => {
             .toEqual(['create', 'edit', 't-host_smoke', 't-copilot_run_start', 't-copilot_run_status', 't-copilot_run_wait',
             't-copilot_run_cancel', 't-copilot_run_cleanup', 't-state_clear', 'task', 'web_fetch',
             'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents',
-            'search_code_subagent'].sort());
+            'search_code_subagent', 'send_inbox', 'context_board'].sort());
         expect(buildSdkExcludedTools('t', ['shell'])).toEqual(expect.arrayContaining(['shell', 'powershell']));
     });
     it('removes every sub-agent / workflow tool even with an empty deny list', () => {
@@ -300,6 +300,9 @@ describe('sdk permission policy', () => {
             'task', 'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents',
             'search_code_subagent', 't-host_smoke',
         ]));
+    });
+    it('removes the SDK v2 agent messaging and context-board tools (send_inbox, context_board)', () => {
+        expect(buildSdkExcludedTools('t')).toEqual(expect.arrayContaining(['send_inbox', 'context_board']));
     });
 });
 // ---------------------------------------------------------------------------

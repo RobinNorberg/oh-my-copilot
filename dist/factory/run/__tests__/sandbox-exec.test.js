@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, linkSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
+import { POLICY_CONFLICT_MESSAGE, fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../../copilot-run/sandbox.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
@@ -27,13 +27,16 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
         constructor(cfg) {
             this.cfg = cfg;
             this.rpc = {
-                ...fakeSessionRpc(sandbox, rec),
+                ...fakeSessionRpc(sandbox, rec, cfg.permissions.sandbox),
                 shell: {
                     executeUserRequested: ({ requestId, command }) => {
                         rec.commands.push(command);
                         script.onCommand?.(command);
                         const marker = markerOf(command);
                         const complete = () => {
+                            if (script.sandboxOff) {
+                                this.cfg.events?.onEvent?.({ type: 'session.sandbox_state_changed', data: { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false } });
+                            }
                             if (script.stray !== undefined)
                                 this.cfg.events?.onEvent?.({ type: 'tool.execution_complete', data: { toolCallId: 'other', toolName: 'bash', sandboxed: script.stray } });
                             if ('sandboxed' in script)
@@ -89,7 +92,9 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
             rec.sessions.push(cfg);
             // A v2 policy conflict fails create when the sandbox goes in with it.
             if (sandbox === 'update-fails' && cfg.permissions.sandbox)
-                throw new Error('policy conflict');
+                throw new Error(POLICY_CONFLICT_MESSAGE);
+            if (sandbox === 'create-fails')
+                throw new Error('authentication failed: 401 Unauthorized');
             return new Session(cfg);
         }
         async deleteSession() { }
@@ -230,6 +235,16 @@ describe('runSandboxed', () => {
         const stray = await runSandboxed(['/bin/true'], opts(), deps({ ...ok, stray: false }));
         expect(stray).toMatchObject({ ran: false, started: true, reason: expect.stringContaining('not attested sandboxed: true') });
     });
+    it('the session\'s sandbox opted out while the command ran (session.sandbox_state_changed): no verdict', async () => {
+        const r = await runSandboxed(['/bin/true'], opts(), deps({ ...ok, sandboxOff: true }));
+        expect(r).toMatchObject({ ran: false, started: true, reason: expect.stringContaining("sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out") });
+    });
+    it('an ignored create-time policy is caught after create: the gate session never starts the command', async () => {
+        const r = await runSandboxed(['/bin/true'], opts(), deps(ok, 'ignored'));
+        expect(r).toMatchObject({ ran: false, reason: expect.stringContaining('sandbox.getState: the effective sandbox config is not enabled') });
+        expect(r.started).toBeUndefined();
+        expect(rec.commands).toEqual([]);
+    });
     it('a trailing attestation is waited for', async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 5)));
         expect(await runSandboxed(['/bin/true'], opts(), deps({ ...ok, late: true }, 'supported', { sleep: wait }))).toMatchObject({ ran: true, status: 0 });
@@ -334,8 +349,9 @@ describe('runSandboxed', () => {
         for (const text of ordinary)
             expect(redactGateOutput(text), text).toBe(text);
     });
-    it('an unsupported host, a policy that is not applied or a blocked enforcement runs nothing (not started)', async () => {
-        for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc']) {
+    it('an unsupported host, a policy that is not applied or not confirmed, a blocked enforcement or a failed create runs nothing (not started)', async () => {
+        // ignored: the runtime drops the create-time policy and getEnforcementStatus reads { required: false, blocked: false }.
+        for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc', 'ignored', 'no-state', 'state-throws', 'opted-out', 'create-fails']) {
             rec.commands = [];
             const r = await runSandboxed(['/bin/true'], opts(), deps(ok, sandbox));
             expect(r.ran, sandbox).toBe(false);
@@ -445,7 +461,8 @@ describe('runSandboxed on a keyring-less host (COPILOT_HOME outside the real hom
         mkdirSync(join(dir, 'localappdata'));
         await runSandboxed(['C:\\node.exe', 'x.js'], opts(), deps(ok, 'supported', { platform: 'win32', env: { PATH: '', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(dir, 'localappdata') } }));
         expect(rec.sessions).toHaveLength(1);
-        expect(rec.optionsUpdates).toHaveLength(0);
+        // The policy goes in at create; confirm re-sends the same one (idempotent) as evidence.
+        expect(rec.optionsUpdates).toEqual([{ permissions: { sandbox: rec.sessions[0].permissions.sandbox, sandboxSource: 'session_flag' } }]);
         expect(denied().length).toBeGreaterThan(0);
         expect(denied()).not.toContain(join(dir, 'user-copilot'));
         expect(denied()).not.toContain(join(dir, 'user-copilot', 'config.json'));

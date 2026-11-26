@@ -549,7 +549,7 @@ To opt in for every team, set it in `.copilot/omg.jsonc`:
   command built indirectly, such as a script file or an alias, is not caught.
 - **Excluded tools.** `task`, `run_dynamic_workflow`,
   `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`,
-  `search_code_subagent` and the plugin's `host_smoke` are removed from each
+  `search_code_subagent`, `send_inbox`, `context_board` and the plugin's `host_smoke` are removed from each
   worker session.
 - **Rejected at start:** `--auto-merge`, non-copilot workers, scaling, and an
   explicitly assigned reviewer-contract role (`critic`, `code-reviewer`,

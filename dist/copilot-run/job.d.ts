@@ -16,7 +16,8 @@
  * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
  *   session without a confirmed sandbox gets no shell tool, a write session
  *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
- *   and a shell call the runtime reports as not sandboxed stops the session
+ *   and a shell call the runtime reports as not sandboxed, or a sandbox state
+ *   change that switches a confirmed sandbox off, stops the session
  *   (`sandbox-escaped`); every sandbox bypass request is rejected;
  * - the runtime env is an allowlist with the profile variables relocated to
  *   the job's home (allowlistSessionEnv);

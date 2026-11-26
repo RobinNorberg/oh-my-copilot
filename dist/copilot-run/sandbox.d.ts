@@ -33,6 +33,8 @@ export interface CopilotRunSandboxState {
         blocked: boolean;
         reason?: string;
     };
+    /** `sandbox.getState().configSource` once the state confirmed the policy in force. */
+    configSource?: string;
     /** PR 1 runs no canary: confirmation rests on host support, the applied config, enforcement and the per-call attestation. */
     canary: 'passed' | 'failed' | 'skipped';
     /** Shell calls the runtime reported as not sandboxed. */
@@ -434,6 +436,35 @@ export declare function probeHostSupport(client: unknown, timeoutMs: number, lau
 export declare function applySandboxConfig(session: unknown, config: SandboxConfig, timeoutMs: number): Promise<string | null>;
 /** `session.rpc.sandbox.getEnforcementStatus()`, or why it could not be read. */
 export declare function readEnforcement(session: unknown, timeoutMs: number): Promise<NonNullable<CopilotRunSandboxState['enforcement']> | string>;
+/**
+ * Why a sandbox state (`session.rpc.sandbox.getState()` or a
+ * `session.sandbox_state_changed` event's data, both carry the same fields)
+ * does not show the policy in force, else null: the effective config must be
+ * enabled and must not offer bypasses (our policy sets `allowBypass: false`; a
+ * managed floor can only tighten it), and the session must hold no opt-out
+ * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
+ * A field of the wrong type counts as not in force.
+ */
+export declare function sandboxStateProblem(state: unknown): string | null;
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy is in force ({@link sandboxStateProblem}), else why not. */
+export declare function readSandboxState(session: unknown, timeoutMs: number): Promise<{
+    configSource: string;
+} | string>;
+/**
+ * Whether a createSession error with the sandbox policy is the runtime refusing
+ * the policy (a managed-policy conflict or an invalid config), the only create
+ * failure the fail-closed sandbox path handles; any other (network, auth,
+ * model) is an ordinary create failure. Copilot CLI 1.0.116's runtime refuses
+ * a conflicting policy with "Sandbox configuration update violates managed
+ * policy. Contact your administrator for more information." (code
+ * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
+ * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
+ * policy could not be resolved: ...". How the code reaches the SDK (message or
+ * JSON-RPC error data) is not documented, so this matches the message, code
+ * and data as text, conservatively: anything naming the sandbox or a managed
+ * policy counts as a sandbox error.
+ */
+export declare function isSandboxPolicyError(err: unknown): boolean;
 /**
  * What a session runs as when its sandbox is not confirmed (§3):
  * review -> `read-only-no-shell` (or `refused` with reviewUnsandboxed
