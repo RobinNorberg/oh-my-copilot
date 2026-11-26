@@ -659,7 +659,9 @@ export function healPrBody(s, runUrl = (id) => `${s.repoUrl}/actions/runs/${id}`
  * The human gate a lane's sandbox outcome forces, with no fresh retry (a
  * retry meets the same host): `sandbox-unavailable` when the job refused to
  * run without a confirmed sandbox, `sandbox-escaped` when a shell call ran
- * outside it.
+ * outside it or the confirmed sandbox was switched off, opted out or weakened
+ * mid-session (`stateEscaped`: a call killed before its completion event is
+ * never counted).
  */
 function sandboxPark(result) {
     const s = result.sandbox;
@@ -667,18 +669,19 @@ function sandboxPark(result) {
         return null;
     if (s.mode === 'refused')
         return { name: 'sandbox-unavailable', reason: result.error ?? s.reason ?? 'the sandbox is not confirmed' };
-    if (s.unsandboxedCalls > 0 && s.mode !== 'detect-only')
-        return { name: 'sandbox-escaped', reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+    if ((s.unsandboxedCalls > 0 || s.stateEscaped) && s.mode !== 'detect-only')
+        return { name: 'sandbox-escaped', reason: result.error ?? s.stateEscaped ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
     return null;
 }
 /**
  * Whether a lane's recorded sandbox kept all of its calls in the OS sandbox
  * (enforced or read-only, or refused before any call ran): the private
  * layout then trusts that the lane could not write the user's repository;
- * detect-only, a call outside the sandbox or no record do not (review-483 M3).
+ * detect-only, a call outside the sandbox, a sandbox that changed mid-session
+ * (`stateEscaped`) or no record do not (review-483 M3).
  */
 function laneSandboxEnforced(s) {
-    return !!s && s.unsandboxedCalls === 0 && (s.mode === 'enforced' || s.mode === 'read-only-no-shell' || s.mode === 'refused');
+    return !!s && s.unsandboxedCalls === 0 && !s.stateEscaped && (s.mode === 'enforced' || s.mode === 'read-only-no-shell' || s.mode === 'refused');
 }
 /** The factory phase that follows an approved ship run in `phase` (ship state wins on resume). */
 function shipFollower(phase) {
@@ -8311,7 +8314,7 @@ class FactoryEngine {
             return '';
         // Every write lane of the run, as recorded when it ran; only the coding-agent lane runs no local Copilot session.
         const loose = this.state.lanes.filter((l) => l.kind !== 'review' && l.kind !== 'coding-agent'
-            && (l.sandbox?.mode !== 'enforced' || l.sandbox.writeNetwork !== 'none')
+            && (l.sandbox?.mode !== 'enforced' || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== 'none')
             // A lane refused before it ran any call never ran a session.
             && !(l.sandbox?.mode === 'refused' && l.sandbox.unsandboxedCalls === 0));
         if (loose.length === 0)

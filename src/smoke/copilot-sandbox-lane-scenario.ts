@@ -319,7 +319,7 @@ function record(role: SandboxLaneRole, result: LaneResult | null, events: Copilo
     role,
     state: result?.state ?? 'not started',
     error: result?.error ?? null,
-    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...(s.enforcement ? { enforcement: s.enforcement } : {}), canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...(s.reason ? { reason: s.reason } : {}) } : null,
+    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...(s.enforcement ? { enforcement: s.enforcement } : {}), canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...(s.stateEscaped ? { stateEscaped: s.stateEscaped } : {}), ...(s.reason ? { reason: s.reason } : {}) } : null,
     shellCalls: att.calls,
     unattestedShellCalls: att.unattested,
     okShellCalls: att.ok,

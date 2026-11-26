@@ -39,6 +39,14 @@ export interface CopilotRunSandboxState {
     canary: 'passed' | 'failed' | 'skipped';
     /** Shell calls the runtime reported as not sandboxed. */
     unsandboxedCalls: number;
+    /**
+     * The `sandbox-escaped:` error when a confirmed (`enforced`) sandbox was
+     * switched off, opted out or weakened mid-session (the
+     * `session.sandbox_state_changed` tripwire). A shell call started after it
+     * and killed before its completion event is never counted, so this, not
+     * `unsandboxedCalls`, is the escape record (absent in older records).
+     */
+    stateEscaped?: string;
     cliVersion: string;
     sdkVersion: string;
     /** The write session's writeNetwork setting as it ran (absent for a review session and in older records). */
@@ -439,15 +447,16 @@ export declare function readEnforcement(session: unknown, timeoutMs: number): Pr
 /**
  * Why a sandbox state (`session.rpc.sandbox.getState()` or a
  * `session.sandbox_state_changed` event's data, both carry the same fields)
- * does not show the policy in force, else null: the effective config must be
- * enabled and must not offer bypasses (our policy sets `allowBypass: false`; a
- * managed floor can only tighten it), and the session must hold no opt-out
+ * does not show the policy `sent` in force, else null: the effective config
+ * must be enabled, must not offer bypasses (our policy sets `allowBypass:
+ * false`; a managed floor can only tighten it) and must be no weaker than
+ * `sent` ({@link configWeakerThanSent}), and the session must hold no opt-out
  * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
  * A field of the wrong type counts as not in force.
  */
-export declare function sandboxStateProblem(state: unknown): string | null;
-/** `session.rpc.sandbox.getState()`: the effective config source when the policy is in force ({@link sandboxStateProblem}), else why not. */
-export declare function readSandboxState(session: unknown, timeoutMs: number): Promise<{
+export declare function sandboxStateProblem(state: unknown, sent: SandboxConfig, platform?: NodeJS.Platform): string | null;
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
+export declare function readSandboxState(session: unknown, timeoutMs: number, sent: SandboxConfig): Promise<{
     configSource: string;
 } | string>;
 /**
@@ -459,10 +468,10 @@ export declare function readSandboxState(session: unknown, timeoutMs: number): P
  * policy. Contact your administrator for more information." (code
  * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
  * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
- * policy could not be resolved: ...". How the code reaches the SDK (message or
- * JSON-RPC error data) is not documented, so this matches the message, code
- * and data as text, conservatively: anything naming the sandbox or a managed
- * policy counts as a sandbox error.
+ * policy could not be resolved: ...". Real create errors carry JSON-RPC code
+ * -32603 without `data` and embed paths and model names in the message (a
+ * missing `...\sandbox\repo` dir, a model called `sandbox-x`), so only these
+ * known phrases count, in the message, a string code or the data as text.
  */
 export declare function isSandboxPolicyError(err: unknown): boolean;
 /**

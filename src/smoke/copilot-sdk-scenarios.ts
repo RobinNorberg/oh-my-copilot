@@ -842,6 +842,7 @@ export interface SandboxLaneState {
   enforcement?: { required: boolean; blocked: boolean; reason?: string };
   canary: string;
   unsandboxedCalls: number;
+  stateEscaped?: string;
   reason?: string;
 }
 
@@ -961,7 +962,7 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
 
   const enforcedLanes = e.lanes.filter(enforced);
   const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0
-    && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+    && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0 && !l.sandbox?.stateEscaped);
 
   const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;
 

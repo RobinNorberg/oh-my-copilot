@@ -14,7 +14,9 @@
  * - `toolStarted(data)` / `toolCompleted(data)` from the session's events:
  *   a shell call that does not report `sandboxed: true` is an escape;
  *   `stateChanged(data)` (`session.sandbox_state_changed`): a confirmed
- *   sandbox that is switched off or opted out mid-session is an escape;
+ *   sandbox that is switched off, opted out or weakened below the policy
+ *   sent mid-session is an escape (kept in `stateEscape` and
+ *   `state.stateEscaped`);
  * - {@link sandboxBypassDenial} in the permission handler: every bypass
  *   request is rejected.
  *
@@ -36,6 +38,8 @@ export class SessionSandboxController {
     /** The `sandbox-escaped:` error once a `session.sandbox_state_changed` event showed the policy no longer in force. */
     stateEscape = null;
     toolNames = new Map();
+    /** The policy confirm sent: the tripwire compares every later state with it. */
+    sent = null;
     constructor(opts) {
         this.opts = opts;
     }
@@ -113,10 +117,11 @@ export class SessionSandboxController {
     async confirm(session, config, atCreate) {
         const { opts } = this;
         const sbx = this.state;
+        this.sent = config;
         let why = await applySandboxConfig(session, config, opts.rpcTimeoutMs);
         if (!why) {
             sbx.applied = atCreate ? 'create' : 'options.update';
-            const state = await readSandboxState(session, opts.rpcTimeoutMs);
+            const state = await readSandboxState(session, opts.rpcTimeoutMs, config);
             if (typeof state === 'string')
                 why = state;
             else
@@ -171,18 +176,20 @@ export class SessionSandboxController {
     /**
      * `session.sandbox_state_changed` data: a tripwire once the sandbox is
      * confirmed. In an enforced session a state that no longer shows the policy
-     * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses) is
-     * an escape: returns the `sandbox-escaped:` error (also kept in
-     * `stateEscape`), else null. Before confirm (create-time transitions) and in
+     * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses, a
+     * config weaker than the policy confirm sent) is an escape: returns the
+     * `sandbox-escaped:` error (also kept in `stateEscape` and in the record's
+     * `stateEscaped`, which the factory parks on), else null. Before confirm (create-time transitions) and in
      * any other mode it returns null; confirm reads the state itself.
      */
     stateChanged(data) {
-        if (this.state?.mode !== 'enforced' || this.stateEscape)
+        if (this.state?.mode !== 'enforced' || this.stateEscape || !this.sent)
             return null;
-        const problem = sandboxStateProblem(data);
+        const problem = sandboxStateProblem(data, this.sent);
         if (!problem)
             return null;
         this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+        this.state.stateEscaped = this.stateEscape;
         return this.stateEscape;
     }
     /** `tool.execution_start` data: remembers the call's tool name for its attestation. */

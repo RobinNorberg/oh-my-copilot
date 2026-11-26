@@ -10,8 +10,9 @@ import type { LoadedSdk, SdkSessionConfig, SpawnedStdioOptions } from '../../smo
 /**
  * `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles.
  * `sandbox-off`: reports the session's sandbox opted out (`session.sandbox_state_changed`) mid-turn, then answers and idles.
+ * `sandbox-weakened`: reports the session's sandbox still enabled but with outbound network allowed mid-turn, then answers and idles.
  */
-export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off';
+export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off' | 'sandbox-weakened';
 
 /**
  * The fake runtime's sandbox: `supported` (default) confirms it; `unsupported`
@@ -21,10 +22,18 @@ export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off';
  * policy (create and options.update succeed, enforcement reads `{ required: false, blocked: false }`, getState shows
  * no enabled sandbox). `no-state` has no sandbox.getState RPC; `state-throws` / `state-hangs`: getState throws or
  * never answers; `opted-out`: getState reports `disabledForSession: true`. `create-fails`: every createSession
- * fails with an auth error that is not a sandbox error.
+ * fails with an auth error that is not a sandbox error. `weakened`: options.update succeeds but getState reports the
+ * applied config with outbound network allowed (a runtime that accepted a weaker policy than the one sent).
  */
 export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc'
-  | 'ignored' | 'no-state' | 'state-throws' | 'state-hangs' | 'opted-out' | 'create-fails';
+  | 'ignored' | 'no-state' | 'state-throws' | 'state-hangs' | 'opted-out' | 'create-fails' | 'weakened';
+
+/** `config` with outbound network allowed: what the `weakened` runtime reports. */
+export function withOutbound(config: unknown): unknown {
+  const c = structuredClone(config) as { userPolicy?: { network?: Record<string, unknown> } };
+  c.userPolicy = { ...c.userPolicy, network: { ...c.userPolicy?.network, allowOutbound: true } };
+  return c;
+}
 
 /** The runtime's refusal of a policy that conflicts with managed policy (Copilot CLI 1.0.116). */
 export const POLICY_CONFLICT_MESSAGE = 'Sandbox configuration update violates managed policy. Contact your administrator for more information.';
@@ -56,15 +65,19 @@ export function fakeClientRpc(sandbox: FakeSandbox, deniedPaths = false): unknow
   };
 }
 
-/** The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took. */
-export function fakeSessionRpc(sandbox: FakeSandbox, calls: { optionsUpdates: Array<Record<string, unknown>> }, created?: unknown): never {
+/**
+ * The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took;
+ * `weaken`: how getState reports the applied config (default: as applied, `withOutbound` for `weakened`).
+ */
+export function fakeSessionRpc(sandbox: FakeSandbox, calls: { optionsUpdates: Array<Record<string, unknown>> }, created?: unknown, weaken?: (config: unknown) => unknown): never {
+  const report = weaken ?? (sandbox === 'weakened' ? withOutbound : (c: unknown) => c);
   if (sandbox === 'no-rpc') return {} as never;
   // The effective config, as getState reports it: what create or options.update applied, unless the runtime drops it.
   let effective: unknown = sandbox === 'ignored' ? undefined : created;
   const state = () => ({
     incarnation: 1,
     revision: 1,
-    config: effective ?? { enabled: false },
+    config: effective ? report(effective) : { enabled: false },
     configSource: effective ? 'session_flag' : 'never_configured',
     disabledForSession: sandbox === 'opted-out',
     autoApproveBypass: false,
@@ -112,6 +125,9 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeS
         if (behavior === 'hang') return;
         if (behavior === 'sandbox-off') {
           this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false });
+        }
+        if (behavior === 'sandbox-weakened') {
+          this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: withOutbound(this.cfg.permissions.sandbox ?? {}), configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: true });
         }
         if (behavior === 'commit') {
           writeFileSync(join(this.cfg.workingDirectory, 'lane.txt'), 'lane work\n');

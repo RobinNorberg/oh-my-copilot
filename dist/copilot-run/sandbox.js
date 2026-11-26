@@ -915,20 +915,139 @@ export async function readEnforcement(session, timeoutMs) {
         return `sandbox.getEnforcementStatus failed: ${errText(err)}`;
     }
 }
+const asObj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+/** A string list, an absent list as empty; null when the field is present but not a string list. */
+const strList = (v) => (v === undefined ? [] : Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null);
+/** Loopback names the runtime adds to an allowed-host list when the local network is allowed (Copilot CLI 1.0.116). */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+/**
+ * Why the effective config `eff` is weaker than the policy `sent`, else null.
+ * Strict equality would refuse every healthy session: the runtime adds
+ * fields (`sandboxExtensions`, `userPolicy.seatbelt`, `deniedPaths: []`,
+ * loopback names in `allowedHosts` with the local network on), sorts the
+ * path lists, and a managed floor may add restrictions. So each field that
+ * can widen access is compared with what was sent, in the widening direction only:
+ * - `addCurrentWorkingDirectory`, `allowTempStorage`, `allowDevToolAccess`:
+ *   on (or absent: their default is on) where we sent false;
+ * - `sandboxMcpServers`, `sandboxLspServers`, `sandboxExtensions`: an explicit
+ *   false (the only opt-out) where we did not send false;
+ * - `auth.git`, `auth.gh`, `userPolicy.seatbelt.keychainAccess`: true where we did not send true;
+ * - `userPolicy.network.allowOutbound`, `allowLocalNetwork`: true where we did not send true;
+ *   `allowedHosts`: empty (no restriction) where ours was not, or a host outside ours
+ *   (a loopback name only with the local network sent on); `blockedHosts`: one of ours missing;
+ * - `userPolicy.filesystem.readwritePaths` outside our read-write set,
+ *   `readonlyPaths` and `enumeratePaths` outside our read-only or read-write set,
+ *   `deniedPaths`: one of ours missing; `userPolicy.seatbelt.extraMachLookups`: one we did not send.
+ * Paths compare with separators unified, trailing separators dropped and, on
+ * Windows, case folded. Deliberately not compared: `credentials` (env masking
+ * only hides values), `userPolicy.network.proxy` (an upstream for allowed
+ * traffic; host rules still apply), `userPolicy.capabilities` (Windows
+ * `packageQuery`, the documented default, grants no file access), and fields
+ * the SDK does not define. A field of the wrong type counts as weaker.
+ */
+function configWeakerThanSent(eff, sent, platform) {
+    const s = sent;
+    for (const k of ['addCurrentWorkingDirectory', 'allowTempStorage', 'allowDevToolAccess']) {
+        if (s[k] === false && eff[k] !== false)
+            return `${k} is ${String(eff[k])}, the policy sent false`;
+    }
+    for (const k of ['sandboxMcpServers', 'sandboxLspServers', 'sandboxExtensions']) {
+        if (eff[k] === false && s[k] !== false)
+            return `${k} is false, the policy did not opt out`;
+        if (eff[k] !== undefined && typeof eff[k] !== 'boolean')
+            return `${k} is not a boolean`;
+    }
+    const effAuth = eff.auth === undefined ? {} : asObj(eff.auth);
+    if (!effAuth)
+        return 'auth is not an object';
+    const sentAuth = asObj(s.auth) ?? {};
+    for (const k of ['git', 'gh']) {
+        if (effAuth[k] !== undefined && effAuth[k] !== false && sentAuth[k] !== true)
+            return `auth.${k} is ${String(effAuth[k])}, the policy did not grant it`;
+    }
+    const effPolicy = eff.userPolicy === undefined ? {} : asObj(eff.userPolicy);
+    if (!effPolicy)
+        return 'userPolicy is not an object';
+    const sentPolicy = asObj(s.userPolicy) ?? {};
+    const sub = (o, k) => (o[k] === undefined ? {} : asObj(o[k]));
+    const effFs = sub(effPolicy, 'filesystem'), effNet = sub(effPolicy, 'network'), effSeat = sub(effPolicy, 'seatbelt');
+    if (!effFs || !effNet || !effSeat)
+        return 'userPolicy.filesystem, network or seatbelt is not an object';
+    const sentFs = sub(sentPolicy, 'filesystem') ?? {}, sentNet = sub(sentPolicy, 'network') ?? {}, sentSeat = sub(sentPolicy, 'seatbelt') ?? {};
+    if (effSeat.keychainAccess !== undefined && effSeat.keychainAccess !== false && sentSeat.keychainAccess !== true)
+        return `userPolicy.seatbelt.keychainAccess is ${String(effSeat.keychainAccess)}, the policy did not grant it`;
+    const mach = strList(effSeat.extraMachLookups);
+    if (!mach)
+        return 'userPolicy.seatbelt.extraMachLookups is not a string list';
+    const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
+    const extraMach = mach.find((m) => !sentMach.has(m));
+    if (extraMach !== undefined)
+        return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+    for (const k of ['allowOutbound', 'allowLocalNetwork']) {
+        if (effNet[k] !== undefined && effNet[k] !== false && sentNet[k] !== true)
+            return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
+    }
+    const host = (h) => h.trim().toLowerCase();
+    const effAllowed = strList(effNet.allowedHosts);
+    if (!effAllowed)
+        return 'userPolicy.network.allowedHosts is not a string list';
+    const sentAllowed = new Set((strList(sentNet.allowedHosts) ?? []).map(host));
+    if (sentAllowed.size > 0) {
+        if (effAllowed.length === 0)
+            return 'userPolicy.network.allowedHosts is empty (any host), the policy restricted the hosts';
+        const extra = effAllowed.find((h) => !sentAllowed.has(host(h)) && !(sentNet.allowLocalNetwork === true && LOOPBACK_HOSTS.has(host(h))));
+        if (extra !== undefined)
+            return `userPolicy.network.allowedHosts allows ${extra}, the policy did not`;
+    }
+    const effBlocked = strList(effNet.blockedHosts);
+    if (!effBlocked)
+        return 'userPolicy.network.blockedHosts is not a string list';
+    const blocked = new Set(effBlocked.map(host));
+    const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked.has(host(h)));
+    if (unblocked !== undefined)
+        return `userPolicy.network.blockedHosts lost ${unblocked}`;
+    const norm = (p) => {
+        let n = p.replace(/[\\/]+/g, '/');
+        while (n.length > 1 && n.endsWith('/') && !/^[A-Za-z]:\/$/.test(n))
+            n = n.slice(0, -1);
+        return platform === 'win32' ? n.toLowerCase() : n;
+    };
+    const set = (k) => new Set((strList(sentFs[k]) ?? []).map(norm));
+    const sentRw = set('readwritePaths');
+    const sentReadable = new Set([...sentRw, ...set('readonlyPaths')]);
+    const checks = [['readwritePaths', sentRw], ['readonlyPaths', sentReadable], ['enumeratePaths', sentReadable]];
+    for (const [k, allowed] of checks) {
+        const list = strList(effFs[k]);
+        if (!list)
+            return `userPolicy.filesystem.${k} is not a string list`;
+        const extra = list.find((p) => !allowed.has(norm(p)));
+        if (extra !== undefined)
+            return `userPolicy.filesystem.${k} grants ${extra}, the policy did not`;
+    }
+    const effDenied = strList(effFs.deniedPaths);
+    if (!effDenied)
+        return 'userPolicy.filesystem.deniedPaths is not a string list';
+    const denied = new Set(effDenied.map(norm));
+    const lost = (strList(sentFs.deniedPaths) ?? []).find((p) => !denied.has(norm(p)));
+    if (lost !== undefined)
+        return `userPolicy.filesystem.deniedPaths lost ${lost}`;
+    return null;
+}
 /**
  * Why a sandbox state (`session.rpc.sandbox.getState()` or a
  * `session.sandbox_state_changed` event's data, both carry the same fields)
- * does not show the policy in force, else null: the effective config must be
- * enabled and must not offer bypasses (our policy sets `allowBypass: false`; a
- * managed floor can only tighten it), and the session must hold no opt-out
+ * does not show the policy `sent` in force, else null: the effective config
+ * must be enabled, must not offer bypasses (our policy sets `allowBypass:
+ * false`; a managed floor can only tighten it) and must be no weaker than
+ * `sent` ({@link configWeakerThanSent}), and the session must hold no opt-out
  * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
  * A field of the wrong type counts as not in force.
  */
-export function sandboxStateProblem(state) {
+export function sandboxStateProblem(state, sent, platform = process.platform) {
     if (!state || typeof state !== 'object')
         return 'no sandbox state';
     const s = state;
-    const config = s.config && typeof s.config === 'object' && !Array.isArray(s.config) ? s.config : null;
+    const config = asObj(s.config);
     if (!config)
         return 'the sandbox state has no effective config';
     if (config.enabled !== true)
@@ -939,16 +1058,19 @@ export function sandboxStateProblem(state) {
         return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
     if (s.autoApproveBypass !== false)
         return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+    const weaker = configWeakerThanSent(config, sent, platform);
+    if (weaker)
+        return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
     return null;
 }
-/** `session.rpc.sandbox.getState()`: the effective config source when the policy is in force ({@link sandboxStateProblem}), else why not. */
-export async function readSandboxState(session, timeoutMs) {
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
+export async function readSandboxState(session, timeoutMs, sent) {
     const call = rpcMethod(session, ['rpc', 'sandbox'], 'getState');
     if (!call)
         return 'the SDK has no sandbox.getState RPC';
     try {
         const res = await withTimeout(call(), timeoutMs, 'sandbox.getState()');
-        const problem = sandboxStateProblem(res);
+        const problem = sandboxStateProblem(res, sent);
         if (problem)
             return `sandbox.getState: ${problem}`;
         const source = res.configSource;
@@ -967,10 +1089,10 @@ export async function readSandboxState(session, timeoutMs) {
  * policy. Contact your administrator for more information." (code
  * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
  * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
- * policy could not be resolved: ...". How the code reaches the SDK (message or
- * JSON-RPC error data) is not documented, so this matches the message, code
- * and data as text, conservatively: anything naming the sandbox or a managed
- * policy counts as a sandbox error.
+ * policy could not be resolved: ...". Real create errors carry JSON-RPC code
+ * -32603 without `data` and embed paths and model names in the message (a
+ * missing `...\sandbox\repo` dir, a model called `sandbox-x`), so only these
+ * known phrases count, in the message, a string code or the data as text.
  */
 export function isSandboxPolicyError(err) {
     const e = err;
@@ -980,7 +1102,7 @@ export function isSandboxPolicyError(err) {
     }
     catch { /* unserializable */ }
     const text = [errText(err), typeof e?.code === 'string' ? e.code : '', data].join('\n');
-    return /sandbox|managed[ _]policy/i.test(text);
+    return /violates managed policy|invalid parameter 'sandboxConfig'|sandbox policy could not be resolved|managed_sandbox_policy_conflict/i.test(text);
 }
 /**
  * What a session runs as when its sandbox is not confirmed (§3):

@@ -454,6 +454,28 @@ describe('your repository around untrusted code that ran without the enforced sa
         const ok = await runFactoryEngine(opts(env, [clean, review('approve')]));
         expect(ok.gate?.name, ok.message).toBe('merge');
     }, T);
+    it('an enforced lane whose sandbox changed mid-session (stateEscaped, no call counted): your repository is compared, a ref it made parks at lane-tampered; one that left it alone parks at sandbox-escaped, never a retry', async () => {
+        const error = "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))";
+        const ESCAPED = { ...ENFORCED_SANDBOX, stateEscaped: error };
+        let env = privateWorld();
+        w = env.w;
+        const sneaky = (ctx) => {
+            gitIn(w.root, 'update-ref', 'refs/heads/sneaky', gitIn(w.root, 'rev-parse', 'HEAD'));
+            return { ...greet()(ctx), state: 'failed', error, sandbox: ESCAPED };
+        };
+        const out = await runFactoryEngine(opts(env, [sneaky]));
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/your repository: ref refs\/heads\/sneaky was created/);
+        rmSync(w.dir, { recursive: true, force: true });
+        env = privateWorld();
+        w = env.w;
+        const lanes = lanesFor(env.w, [(ctx) => ({ ...greet()(ctx), state: 'failed', error, sandbox: ESCAPED })]);
+        const parked = await runFactoryEngine(localOpts(env.w, lanes, { runUserConfig: env.user, secretScanUserConfig: null }));
+        expect(parked.gate?.name, parked.message).toBe('sandbox-escaped');
+        expect(parked.gate?.reason).toContain(error);
+        expect(lanes.started).toHaveLength(1);
+        expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
+    }, T);
     it('an unsandboxed local gate that changes your repository\'s git state parks at lane-tampered and its verdict is not used', async () => {
         const env = privateWorld();
         w = env.w;

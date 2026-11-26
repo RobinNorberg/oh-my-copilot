@@ -257,7 +257,7 @@ export function renderFactoryRunState(state, o = {}) {
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
     for (const lane of state.lanes) {
         const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
-        lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ''}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ''}${lane.lastEventAt && (lane.status === 'running' || lane.status === 'stalled') ? ` last event ${lane.lastEventAt}` : ''}`);
+        lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ''}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}${lane.sandbox.stateEscaped ? ' (escaped mid-session)' : ''}` : ''}${lane.lastEventAt && (lane.status === 'running' || lane.status === 'stalled') ? ` last event ${lane.lastEventAt}` : ''}`);
         if (lane.status === 'stalled' && lane.note)
             lines.push(chalk.yellow(`    ${plainText(lane.note)}`));
     }

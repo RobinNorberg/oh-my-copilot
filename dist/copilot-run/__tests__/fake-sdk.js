@@ -3,6 +3,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+/** `config` with outbound network allowed: what the `weakened` runtime reports. */
+export function withOutbound(config) {
+    const c = structuredClone(config);
+    c.userPolicy = { ...c.userPolicy, network: { ...c.userPolicy?.network, allowOutbound: true } };
+    return c;
+}
 /** The runtime's refusal of a policy that conflicts with managed policy (Copilot CLI 1.0.116). */
 export const POLICY_CONFLICT_MESSAGE = 'Sandbox configuration update violates managed policy. Contact your administrator for more information.';
 export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
@@ -21,8 +27,12 @@ export function fakeClientRpc(sandbox, deniedPaths = false) {
         },
     };
 }
-/** The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took. */
-export function fakeSessionRpc(sandbox, calls, created) {
+/**
+ * The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took;
+ * `weaken`: how getState reports the applied config (default: as applied, `withOutbound` for `weakened`).
+ */
+export function fakeSessionRpc(sandbox, calls, created, weaken) {
+    const report = weaken ?? (sandbox === 'weakened' ? withOutbound : (c) => c);
     if (sandbox === 'no-rpc')
         return {};
     // The effective config, as getState reports it: what create or options.update applied, unless the runtime drops it.
@@ -30,7 +40,7 @@ export function fakeSessionRpc(sandbox, calls, created) {
     const state = () => ({
         incarnation: 1,
         revision: 1,
-        config: effective ?? { enabled: false },
+        config: effective ? report(effective) : { enabled: false },
         configSource: effective ? 'session_flag' : 'never_configured',
         disabledForSession: sandbox === 'opted-out',
         autoApproveBypass: false,
@@ -84,6 +94,9 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
                     return;
                 if (behavior === 'sandbox-off') {
                     this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false });
+                }
+                if (behavior === 'sandbox-weakened') {
+                    this.emit('session.sandbox_state_changed', { incarnation: 1, revision: 2, config: withOutbound(this.cfg.permissions.sandbox ?? {}), configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: true });
                 }
                 if (behavior === 'commit') {
                     writeFileSync(join(this.cfg.workingDirectory, 'lane.txt'), 'lane work\n');

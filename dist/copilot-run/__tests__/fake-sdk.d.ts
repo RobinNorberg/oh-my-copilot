@@ -3,8 +3,9 @@ import type { LoadedSdk, SdkSessionConfig, SpawnedStdioOptions } from '../../smo
 /**
  * `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles.
  * `sandbox-off`: reports the session's sandbox opted out (`session.sandbox_state_changed`) mid-turn, then answers and idles.
+ * `sandbox-weakened`: reports the session's sandbox still enabled but with outbound network allowed mid-turn, then answers and idles.
  */
-export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off';
+export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off' | 'sandbox-weakened';
 /**
  * The fake runtime's sandbox: `supported` (default) confirms it; `unsupported`
  * reports no host support; `blocked` reports enforcement blocked;
@@ -13,9 +14,12 @@ export type FakeBehavior = 'idle' | 'commit' | 'hang' | 'sandbox-off';
  * policy (create and options.update succeed, enforcement reads `{ required: false, blocked: false }`, getState shows
  * no enabled sandbox). `no-state` has no sandbox.getState RPC; `state-throws` / `state-hangs`: getState throws or
  * never answers; `opted-out`: getState reports `disabledForSession: true`. `create-fails`: every createSession
- * fails with an auth error that is not a sandbox error.
+ * fails with an auth error that is not a sandbox error. `weakened`: options.update succeeds but getState reports the
+ * applied config with outbound network allowed (a runtime that accepted a weaker policy than the one sent).
  */
-export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc' | 'ignored' | 'no-state' | 'state-throws' | 'state-hangs' | 'opted-out' | 'create-fails';
+export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc' | 'ignored' | 'no-state' | 'state-throws' | 'state-hangs' | 'opted-out' | 'create-fails' | 'weakened';
+/** `config` with outbound network allowed: what the `weakened` runtime reports. */
+export declare function withOutbound(config: unknown): unknown;
 /** The runtime's refusal of a policy that conflicts with managed policy (Copilot CLI 1.0.116). */
 export declare const POLICY_CONFLICT_MESSAGE = "Sandbox configuration update violates managed policy. Contact your administrator for more information.";
 export interface FakeCalls {
@@ -30,10 +34,13 @@ export interface FakeCalls {
 export declare const newCalls: () => FakeCalls;
 /** The server `rpc` of a fake client with sandbox support `sandbox` (`deniedPaths`: the host reports denied_paths). */
 export declare function fakeClientRpc(sandbox: FakeSandbox, deniedPaths?: boolean): unknown;
-/** The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took. */
+/**
+ * The session `rpc` of a fake session with sandbox support `sandbox`; `created`: the sandbox config createSession took;
+ * `weaken`: how getState reports the applied config (default: as applied, `withOutbound` for `weakened`).
+ */
 export declare function fakeSessionRpc(sandbox: FakeSandbox, calls: {
     optionsUpdates: Array<Record<string, unknown>>;
-}, created?: unknown): never;
+}, created?: unknown, weaken?: (config: unknown) => unknown): never;
 export declare const gitIn: (cwd: string, ...args: string[]) => string;
 export declare function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox?: FakeSandbox, deniedPaths?: boolean): LoadedSdk;
 export declare function fakeDeps(root: string, behavior: FakeBehavior, calls: FakeCalls, env: NodeJS.ProcessEnv, sandbox?: FakeSandbox): CopilotRunDeps;

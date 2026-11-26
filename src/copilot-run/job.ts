@@ -497,7 +497,8 @@ export type CopilotRunSnapshot = {
   /**
    * The OS sandbox once the job decided it: `refused` ends the job with a
    * `sandbox-unavailable:` error, an unsandboxed shell call with
-   * `sandbox-escaped:` (unsandboxedCalls > 0).
+   * `sandbox-escaped:` (unsandboxedCalls > 0), and so does a confirmed
+   * sandbox that changed mid-session (stateEscaped).
    */
   sandbox?: CopilotRunSandboxState;
 };

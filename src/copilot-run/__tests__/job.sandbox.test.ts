@@ -167,6 +167,7 @@ describe('copilot_run sandbox fail-closed', () => {
     ['no-state', 'the SDK has no sandbox.getState RPC'],
     ['state-throws', 'sandbox.getState failed: state unavailable'],
     ['opted-out', 'sandbox.getState: the session holds a sandbox opt-out (disabledForSession: true)'],
+    ['weakened', 'sandbox.getState: the effective sandbox config is weaker than the policy sent: userPolicy.network.allowOutbound is true, the policy sent false'],
   ])('a runtime that does not confirm the policy after create (%s): a write session refuses with sandbox-unavailable before its first turn', async (sandbox, reason) => {
     const m = manager('idle', sandbox);
     const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
@@ -261,6 +262,18 @@ describe('copilot_run sandbox attestation', () => {
     expect(done.status).toBe('failed');
     expect(done.stopRequested).toBe('sandbox-escaped');
     expect(done.error).toBe("sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true)); the session was stopped");
+    // The record the factory reads carries the escape: no shell call was counted.
+    expect(done.sandbox).toMatchObject({ mode: 'enforced', unsandboxedCalls: 0, stateEscaped: "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))" });
+  });
+
+  it('session.sandbox_state_changed with a weaker config mid-session (outbound network on) stops an enforced session with sandbox-escaped', async () => {
+    const m = manager('sandbox-weakened', 'supported');
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.stopRequested).toBe('sandbox-escaped');
+    const why = "sandbox-escaped: the session's sandbox changed mid-session (the effective sandbox config is weaker than the policy sent: userPolicy.network.allowOutbound is true, the policy sent false)";
+    expect(done.error).toBe(`${why}; the session was stopped`);
+    expect(done.sandbox).toMatchObject({ mode: 'enforced', unsandboxedCalls: 0, stateEscaped: why });
   });
 
   it('session.sandbox_state_changed with the config disabled stops an enforced session; one that keeps it in force does not', async () => {
@@ -276,6 +289,7 @@ describe('copilot_run sandbox attestation', () => {
     expect(done.status).toBe('failed');
     expect(done.stopRequested).toBe('sandbox-escaped');
     expect(done.error).toMatch(/^sandbox-escaped: the session's sandbox changed mid-session \(the effective sandbox config is not enabled/);
+    expect(done.sandbox?.stateEscaped).toMatch(/^sandbox-escaped: the session's sandbox changed mid-session \(the effective sandbox config is not enabled/);
   });
 
   it('a tool the job never saw start that reports sandboxed: false stops the session', async () => {

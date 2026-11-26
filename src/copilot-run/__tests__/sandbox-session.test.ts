@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import type { LoadedSdk, SdkClientLike, SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
-import { DEFAULT_SANDBOX_SETTINGS, REVIEW_READ_TOOLS, isSandboxPolicyError, sandboxStateProblem, type SandboxPolicyContext, type SandboxProfile, type SandboxSettings } from '../sandbox.js';
+import { DEFAULT_SANDBOX_SETTINGS, REVIEW_READ_TOOLS, isSandboxPolicyError, sandboxStateProblem, type SandboxConfig, type SandboxPolicyContext, type SandboxProfile, type SandboxSettings } from '../sandbox.js';
 import { SessionSandboxController, sandboxBypassDenial, type SessionSandboxOptions } from '../sandbox-session.js';
 import { POLICY_CONFLICT_MESSAGE, fakeClientRpc, fakeSessionRpc, type FakeSandbox } from './fake-sdk.js';
 
@@ -256,7 +256,8 @@ describe('SessionSandboxController attestation', () => {
 });
 
 describe('SessionSandboxController.stateChanged (session.sandbox_state_changed)', () => {
-  const inForce = (over: Record<string, unknown> = {}, config: Record<string, unknown> = { enabled: true, allowBypass: false }) =>
+  let sent: SandboxConfig;
+  const inForce = (over: Record<string, unknown> = {}, config: unknown = sent) =>
     ({ incarnation: 1, revision: 2, config, configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: null, ...over });
 
   async function enforced() {
@@ -264,6 +265,7 @@ describe('SessionSandboxController.stateChanged (session.sandbox_state_changed)'
     const config = await t.ctl.decide(client('supported'), loadedSdk());
     await t.ctl.confirm(t.session, config!, true);
     expect(t.ctl.state?.mode).toBe('enforced');
+    sent = config!;
     return t.ctl;
   }
 
@@ -271,21 +273,24 @@ describe('SessionSandboxController.stateChanged (session.sandbox_state_changed)'
     const ctl = await enforced();
     expect(ctl.stateChanged(inForce())).toBeNull();
     expect(ctl.stateEscape).toBeNull();
+    expect(ctl.state!.stateEscaped).toBeUndefined();
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ['disabledForSession', inForce({ disabledForSession: true }), 'the session holds a sandbox opt-out (disabledForSession: true)'],
-    ['config.enabled false', inForce({}, { enabled: false }), 'the effective sandbox config is not enabled (enabled: false)'],
-    ['autoApproveBypass', inForce({ autoApproveBypass: true }), 'the session auto-approves sandbox bypass requests (autoApproveBypass: true)'],
-    ['allowBypass', inForce({}, { enabled: true, allowBypass: true }), 'the effective sandbox config allows bypass requests'],
-    ['no config', inForce({ config: null }), 'the sandbox state has no effective config'],
-  ])('%s in an enforced session is an escape', async (_label, data, problem) => {
+  it.each<[string, (c: SandboxConfig) => Record<string, unknown>, string]>([
+    ['disabledForSession', () => inForce({ disabledForSession: true }), 'the session holds a sandbox opt-out (disabledForSession: true)'],
+    ['config.enabled false', () => inForce({}, { enabled: false }), 'the effective sandbox config is not enabled (enabled: false)'],
+    ['autoApproveBypass', () => inForce({ autoApproveBypass: true }), 'the session auto-approves sandbox bypass requests (autoApproveBypass: true)'],
+    ['allowBypass', (c) => inForce({}, { ...c, allowBypass: true }), 'the effective sandbox config allows bypass requests'],
+    ['no config', () => inForce({ config: null }), 'the sandbox state has no effective config'],
+    ['a weaker config', (c) => inForce({}, { ...c, sandboxMcpServers: false }), 'the effective sandbox config is weaker than the policy sent: sandboxMcpServers is false, the policy did not opt out'],
+  ])('%s in an enforced session is an escape, recorded in the sandbox record', async (_label, data, problem) => {
     const ctl = await enforced();
     const why = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
-    expect(ctl.stateChanged(data)).toBe(why);
+    expect(ctl.stateChanged(data(sent))).toBe(why);
     expect(ctl.stateEscape).toBe(why);
+    expect(ctl.state).toMatchObject({ mode: 'enforced', unsandboxedCalls: 0, stateEscaped: why });
     // Reported once.
-    expect(ctl.stateChanged(data)).toBeNull();
+    expect(ctl.stateChanged(data(sent))).toBeNull();
   });
 
   it('before confirm or in a session that is not enforced it is ignored (confirm reads the state itself)', async () => {
@@ -295,35 +300,158 @@ describe('SessionSandboxController.stateChanged (session.sandbox_state_changed)'
     const d = setup('unsupported', { settings: { writeUnsandboxed: 'detect-only' } });
     await d.ctl.decide(client('unsupported'), loadedSdk());
     expect(d.ctl.stateChanged(inForce({}, { enabled: false }))).toBeNull();
+    expect(d.ctl.state!.stateEscaped).toBeUndefined();
   });
 });
 
+type Mutable = Record<string, any>;
+
+/** Each way an effective config can be weaker than the sent one, with the reason sandboxStateProblem gives. */
+const WEAKENINGS: Array<[string, (c: Mutable) => void, RegExp]> = [
+  ['addCurrentWorkingDirectory on where the policy sent false', (c) => { c.addCurrentWorkingDirectory = true; }, /addCurrentWorkingDirectory is true, the policy sent false/],
+  ['allowDevToolAccess absent (its default is on)', (c) => { delete c.allowDevToolAccess; }, /allowDevToolAccess is undefined, the policy sent false/],
+  ['sandboxMcpServers off', (c) => { c.sandboxMcpServers = false; }, /sandboxMcpServers is false/],
+  ['sandboxLspServers off', (c) => { c.sandboxLspServers = false; }, /sandboxLspServers is false/],
+  ['sandboxExtensions off', (c) => { c.sandboxExtensions = false; }, /sandboxExtensions is false/],
+  ['auth.git granted', (c) => { c.auth = { ...c.auth, git: true }; }, /auth\.git is true/],
+  ['auth.gh granted', (c) => { c.auth = { ...c.auth, gh: true }; }, /auth\.gh is true/],
+  ['outbound network on', (c) => { c.userPolicy.network.allowOutbound = true; }, /network\.allowOutbound is true/],
+  ['local network on', (c) => { c.userPolicy.network.allowLocalNetwork = true; }, /network\.allowLocalNetwork is true/],
+  ['a read-write root', (c) => { c.userPolicy.filesystem.readwritePaths.push('C:/'); }, /readwritePaths grants C:\//],
+  ['a read-only path outside the policy', (c) => { c.userPolicy.filesystem.readonlyPaths.push('/elsewhere'); }, /readonlyPaths grants \/elsewhere/],
+  ['an enumerate path outside the policy', (c) => { c.userPolicy.filesystem.enumeratePaths = ['/elsewhere']; }, /enumeratePaths grants \/elsewhere/],
+  ['a denied path dropped', (c) => { c.userPolicy.filesystem.deniedPaths = []; }, /deniedPaths lost/],
+  ['keychain access on', (c) => { c.userPolicy.seatbelt = { keychainAccess: true }; }, /keychainAccess is true/],
+  ['an extra Mach lookup', (c) => { c.userPolicy.seatbelt = { extraMachLookups: ['com.apple.x'] }; }, /extraMachLookups grants com\.apple\.x/],
+  ['a read-write list of the wrong type', (c) => { c.userPolicy.filesystem.readwritePaths = 'C:/'; }, /readwritePaths is not a string list/],
+];
+
+/** A write policy with a denied path, as buildSandboxConfig builds one (addCurrentWorkingDirectory false as for a review). */
+const sentWrite = (): SandboxConfig => ({
+  enabled: true, addCurrentWorkingDirectory: false, allowBypass: false, allowDevToolAccess: false, sandboxMcpServers: true, sandboxLspServers: true, auth: { git: false, gh: false },
+  userPolicy: {
+    filesystem: { readwritePaths: ['C:\\work\\wt', 'C:\\work\\job\\home\\tmp'], readonlyPaths: ['C:\\work\\repo\\.git', 'C:\\Program Files\\nodejs'], deniedPaths: ['C:\\Users\\me\\.ssh', 'C:\\Users\\me\\.npmrc'] },
+    network: { allowOutbound: false, allowLocalNetwork: false },
+  },
+});
+const stateOf = (config: unknown) => ({ revision: 3, config, configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: true, incarnation: 1 });
+
 describe('sandboxStateProblem', () => {
   it('needs config.enabled true, no bypass, no opt-out; wrong types count as not in force', () => {
-    const ok = { config: { enabled: true, allowBypass: false }, disabledForSession: false, autoApproveBypass: false };
-    expect(sandboxStateProblem(ok)).toBeNull();
-    // allowBypass absent: the runtime's default offers no bypass.
-    expect(sandboxStateProblem({ ...ok, config: { enabled: true } })).toBeNull();
-    expect(sandboxStateProblem(null)).toBe('no sandbox state');
-    expect(sandboxStateProblem({ ...ok, config: { enabled: 'true' } })).toMatch(/not enabled/);
-    expect(sandboxStateProblem({ ...ok, disabledForSession: undefined })).toMatch(/opt-out/);
-    expect(sandboxStateProblem({ ...ok, autoApproveBypass: 'no' })).toMatch(/auto-approves/);
+    const sent = sentWrite();
+    const ok = stateOf(sent);
+    expect(sandboxStateProblem(ok, sent, 'win32')).toBeNull();
+    expect(sandboxStateProblem(null, sent)).toBe('no sandbox state');
+    expect(sandboxStateProblem({ ...ok, config: { ...sent, enabled: 'true' } }, sent)).toMatch(/not enabled/);
+    expect(sandboxStateProblem({ ...ok, disabledForSession: undefined }, sent)).toMatch(/opt-out/);
+    expect(sandboxStateProblem({ ...ok, autoApproveBypass: 'no' }, sent)).toMatch(/auto-approves/);
+  });
+
+  it('passes the effective config as Copilot CLI 1.0.116 reports it: runtime-added fields, sorted lists, other separators and case, and added restrictions', () => {
+    const sent = sentWrite();
+    sent.userPolicy.network = { allowOutbound: true, allowLocalNetwork: true, allowedHosts: ['api.nuget.org', '*.nuget.org'] };
+    const effective = {
+      enabled: true,
+      userPolicy: {
+        filesystem: {
+          // Sorted, one entry dropped (a managed floor may narrow), other separators, case and a trailing separator.
+          readwritePaths: ['c:/work/job/home/tmp/'],
+          // A read-write path of ours as read-only is narrower.
+          readonlyPaths: ['C:\\Program Files\\nodejs', 'C:\\work\\repo\\.git', 'C:\\work\\wt'],
+          deniedPaths: ['C:\\Users\\me\\.npmrc', 'c:\\users\\me\\.ssh', 'C:\\Users\\me\\.aws'],
+          enumeratePaths: [],
+        },
+        // The runtime adds the loopback names with the local network on; a managed floor adds a blocked host.
+        network: { allowOutbound: true, allowLocalNetwork: true, allowedHosts: ['API.nuget.org', '*.nuget.org', 'localhost', '127.0.0.1', '::1'], blockedHosts: ['evil.example'] },
+        seatbelt: { keychainAccess: false },
+        capabilities: ['packageQuery'],
+      },
+      addCurrentWorkingDirectory: false,
+      sandboxMcpServers: true,
+      sandboxLspServers: true,
+      sandboxExtensions: true,
+      allowBypass: false,
+      auth: { git: false, gh: false },
+      allowDevToolAccess: false,
+      allowTempStorage: false,
+    };
+    expect(sandboxStateProblem(stateOf(effective), sent, 'win32')).toBeNull();
+    // Case folds only on Windows.
+    expect(sandboxStateProblem(stateOf(effective), sent, 'linux')).toMatch(/readwritePaths grants c:\/work\/job\/home\/tmp\//);
+  });
+
+  it('a review policy (no deny list sent) passes the runtime-added deniedPaths: []', () => {
+    const sent = sentWrite();
+    const review = { ...sent, userPolicy: { ...sent.userPolicy, filesystem: { readwritePaths: ['C:\\work\\job\\home\\tmp'], readonlyPaths: ['C:\\work\\wt'] } } } as SandboxConfig;
+    const effective = { ...structuredClone(review), userPolicy: { ...structuredClone(review.userPolicy), filesystem: { ...review.userPolicy.filesystem, deniedPaths: [] }, seatbelt: { keychainAccess: false } }, sandboxExtensions: true };
+    expect(sandboxStateProblem(stateOf(effective), review, 'win32')).toBeNull();
+  });
+
+  it('allowTempStorage is compared only when the policy sent false', () => {
+    const sent = { ...sentWrite(), allowTempStorage: false } as SandboxConfig;
+    expect(sandboxStateProblem(stateOf({ ...structuredClone(sent), allowTempStorage: true }), sent, 'win32')).toMatch(/allowTempStorage is true, the policy sent false/);
+    expect(sandboxStateProblem(stateOf({ ...structuredClone(sentWrite()), allowTempStorage: true }), sentWrite(), 'win32')).toBeNull();
+  });
+
+  it.each(WEAKENINGS)('a config weaker than the one sent: %s', (_label, weaken, why) => {
+    const sent = sentWrite();
+    const effective = structuredClone(sent) as Mutable;
+    weaken(effective);
+    expect(sandboxStateProblem(stateOf(effective), sent, 'win32')).toMatch(why);
+  });
+
+  it('host lists: an empty or missing allowed list, a host outside ours, loopback without the local network, or a lost blocked host is weaker', () => {
+    const sent = sentWrite();
+    sent.userPolicy.network = { allowOutbound: true, allowLocalNetwork: false, allowedHosts: ['registry.npmjs.org'] };
+    (sent.userPolicy.network as Mutable).blockedHosts = ['evil.example'];
+    const withNet = (network: Mutable) => stateOf({ ...structuredClone(sent), userPolicy: { ...structuredClone(sent.userPolicy), network } });
+    const base = { allowOutbound: true, allowLocalNetwork: false, blockedHosts: ['evil.example'] };
+    expect(sandboxStateProblem(withNet({ ...base, allowedHosts: ['registry.npmjs.org'] }), sent)).toBeNull();
+    expect(sandboxStateProblem(withNet({ ...base, allowedHosts: [] }), sent)).toMatch(/allowedHosts is empty/);
+    expect(sandboxStateProblem(withNet({ ...base }), sent)).toMatch(/allowedHosts is empty/);
+    expect(sandboxStateProblem(withNet({ ...base, allowedHosts: ['registry.npmjs.org', 'example.com'] }), sent)).toMatch(/allows example\.com/);
+    expect(sandboxStateProblem(withNet({ ...base, allowedHosts: ['registry.npmjs.org', 'localhost'] }), sent)).toMatch(/allows localhost/);
+    expect(sandboxStateProblem(withNet({ ...base, allowedHosts: ['registry.npmjs.org'], blockedHosts: [] }), sent)).toMatch(/blockedHosts lost evil\.example/);
+  });
+});
+
+describe('the weaker-config check through confirm', () => {
+  it.each(WEAKENINGS)('%s: a write session refuses, a review downgrades to read-only without a shell', async (_label, weaken) => {
+    const weakened = (c: unknown) => { const w = structuredClone(c) as Mutable; weaken(w); return w; };
+    for (const profile of ['write', 'review'] as const) {
+      const t = setup('supported', { profile });
+      const updates: Array<Record<string, unknown>> = [];
+      const session = { sessionId: 's-1', rpc: fakeSessionRpc('supported', { optionsUpdates: updates }, undefined, weakened) } as unknown as SdkSessionLike;
+      const config = await t.ctl.decide(client('supported'), loadedSdk());
+      // Every dimension needs something to lose: a deny list and an opted-out working directory.
+      config!.userPolicy.filesystem.deniedPaths = ['/denied'];
+      config!.addCurrentWorkingDirectory = false;
+      await t.ctl.confirm(session, config!, false);
+      expect(t.ctl.state!.mode).toBe(profile === 'write' ? 'refused' : 'read-only-no-shell');
+      expect(t.ctl.state!.reason).toMatch(/^sandbox\.getState: the effective sandbox config is weaker than the policy sent: /);
+      if (profile === 'review') expect(updates.at(-1)).toEqual({ tools: { availableTools: [...REVIEW_READ_TOOLS] } });
+    }
   });
 });
 
 describe('isSandboxPolicyError', () => {
-  it('a policy conflict, an invalid sandbox config or a JSON-RPC error naming the conflict code is a sandbox error', () => {
+  it('each known phrase is a sandbox error, in the message, a string code or the data', () => {
     expect(isSandboxPolicyError(new Error(POLICY_CONFLICT_MESSAGE))).toBe(true);
     expect(isSandboxPolicyError(new Error("invalid parameter 'sandboxConfig': userPolicy must be an object"))).toBe(true);
+    expect(isSandboxPolicyError(new Error('session sandbox policy could not be resolved: no home'))).toBe(true);
     expect(isSandboxPolicyError(Object.assign(new Error('Request failed'), { code: -32603, data: { code: 'managed_sandbox_policy_conflict' } }))).toBe(true);
+    expect(isSandboxPolicyError(Object.assign(new Error('Request failed'), { code: 'managed_sandbox_policy_conflict' }))).toBe(true);
   });
 
-  it('auth, network and model errors are not', () => {
+  it('auth, network, model and path errors are not, even when a path or model name says "sandbox"', () => {
     expect(isSandboxPolicyError(new Error('authentication failed: 401 Unauthorized'))).toBe(false);
     expect(isSandboxPolicyError(new Error('connect ECONNREFUSED 127.0.0.1:443'))).toBe(false);
     expect(isSandboxPolicyError(new Error('Model "gpt-x" is not available'))).toBe(false);
     expect(isSandboxPolicyError(new Error('You are not authorized to use this Copilot feature, it requires an enterprise or organization policy to be enabled.'))).toBe(false);
     expect(isSandboxPolicyError('socket hang up')).toBe(false);
+    expect(isSandboxPolicyError(Object.assign(new Error('session construction failed: Directory does not exist or cannot be accessed: C:\\runs\\sandbox\\repo'), { code: -32603 }))).toBe(false);
+    expect(isSandboxPolicyError(Object.assign(new Error('Model "sandbox-x" is not available'), { code: -32603 }))).toBe(false);
+    expect(isSandboxPolicyError(new Error('the managed policy server is unreachable'))).toBe(false);
   });
 });
 

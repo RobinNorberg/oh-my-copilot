@@ -48163,7 +48163,7 @@ function evaluateSandboxLane(run3) {
   const networkOk = enforced(write) && !!e2.probe && e2.localHits === 0 && outbound?.ok === false && local?.ok !== true;
   const reach = (r) => !r ? "not tried" : r.ok ? `REACHED (HTTP ${r.status ?? "?"})` : `blocked (${excerpt(r.error ?? "error", 80)})`;
   const enforcedLanes = e2.lanes.filter(enforced);
-  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+  const attestedOk = enforcedLanes.length === e2.lanes.length && e2.lanes.length > 0 && !!write && write.okShellCalls > 0 && e2.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0 && !l.sandbox?.stateEscaped);
   const commitOk = !!e2.commit?.ok && e2.commit.files.length === 1 && e2.commit.files[0] === SANDBOX_LANE_FILE;
   const realHome = target(e2.writeTargets, "real-home");
   const profile = target(e2.writeTargets, "profile");
@@ -50066,23 +50066,92 @@ async function readEnforcement(session, timeoutMs) {
     return `sandbox.getEnforcementStatus failed: ${errText(err)}`;
   }
 }
-function sandboxStateProblem(state) {
+function configWeakerThanSent(eff, sent, platform) {
+  const s = sent;
+  for (const k of ["addCurrentWorkingDirectory", "allowTempStorage", "allowDevToolAccess"]) {
+    if (s[k] === false && eff[k] !== false) return `${k} is ${String(eff[k])}, the policy sent false`;
+  }
+  for (const k of ["sandboxMcpServers", "sandboxLspServers", "sandboxExtensions"]) {
+    if (eff[k] === false && s[k] !== false) return `${k} is false, the policy did not opt out`;
+    if (eff[k] !== void 0 && typeof eff[k] !== "boolean") return `${k} is not a boolean`;
+  }
+  const effAuth = eff.auth === void 0 ? {} : asObj(eff.auth);
+  if (!effAuth) return "auth is not an object";
+  const sentAuth = asObj(s.auth) ?? {};
+  for (const k of ["git", "gh"]) {
+    if (effAuth[k] !== void 0 && effAuth[k] !== false && sentAuth[k] !== true) return `auth.${k} is ${String(effAuth[k])}, the policy did not grant it`;
+  }
+  const effPolicy = eff.userPolicy === void 0 ? {} : asObj(eff.userPolicy);
+  if (!effPolicy) return "userPolicy is not an object";
+  const sentPolicy = asObj(s.userPolicy) ?? {};
+  const sub = (o, k) => o[k] === void 0 ? {} : asObj(o[k]);
+  const effFs = sub(effPolicy, "filesystem"), effNet = sub(effPolicy, "network"), effSeat = sub(effPolicy, "seatbelt");
+  if (!effFs || !effNet || !effSeat) return "userPolicy.filesystem, network or seatbelt is not an object";
+  const sentFs = sub(sentPolicy, "filesystem") ?? {}, sentNet = sub(sentPolicy, "network") ?? {}, sentSeat = sub(sentPolicy, "seatbelt") ?? {};
+  if (effSeat.keychainAccess !== void 0 && effSeat.keychainAccess !== false && sentSeat.keychainAccess !== true) return `userPolicy.seatbelt.keychainAccess is ${String(effSeat.keychainAccess)}, the policy did not grant it`;
+  const mach = strList(effSeat.extraMachLookups);
+  if (!mach) return "userPolicy.seatbelt.extraMachLookups is not a string list";
+  const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
+  const extraMach = mach.find((m) => !sentMach.has(m));
+  if (extraMach !== void 0) return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+  for (const k of ["allowOutbound", "allowLocalNetwork"]) {
+    if (effNet[k] !== void 0 && effNet[k] !== false && sentNet[k] !== true) return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
+  }
+  const host = (h) => h.trim().toLowerCase();
+  const effAllowed = strList(effNet.allowedHosts);
+  if (!effAllowed) return "userPolicy.network.allowedHosts is not a string list";
+  const sentAllowed = new Set((strList(sentNet.allowedHosts) ?? []).map(host));
+  if (sentAllowed.size > 0) {
+    if (effAllowed.length === 0) return "userPolicy.network.allowedHosts is empty (any host), the policy restricted the hosts";
+    const extra = effAllowed.find((h) => !sentAllowed.has(host(h)) && !(sentNet.allowLocalNetwork === true && LOOPBACK_HOSTS.has(host(h))));
+    if (extra !== void 0) return `userPolicy.network.allowedHosts allows ${extra}, the policy did not`;
+  }
+  const effBlocked = strList(effNet.blockedHosts);
+  if (!effBlocked) return "userPolicy.network.blockedHosts is not a string list";
+  const blocked = new Set(effBlocked.map(host));
+  const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked.has(host(h)));
+  if (unblocked !== void 0) return `userPolicy.network.blockedHosts lost ${unblocked}`;
+  const norm2 = (p) => {
+    let n = p.replace(/[\\/]+/g, "/");
+    while (n.length > 1 && n.endsWith("/") && !/^[A-Za-z]:\/$/.test(n)) n = n.slice(0, -1);
+    return platform === "win32" ? n.toLowerCase() : n;
+  };
+  const set2 = (k) => new Set((strList(sentFs[k]) ?? []).map(norm2));
+  const sentRw = set2("readwritePaths");
+  const sentReadable = /* @__PURE__ */ new Set([...sentRw, ...set2("readonlyPaths")]);
+  const checks = [["readwritePaths", sentRw], ["readonlyPaths", sentReadable], ["enumeratePaths", sentReadable]];
+  for (const [k, allowed] of checks) {
+    const list = strList(effFs[k]);
+    if (!list) return `userPolicy.filesystem.${k} is not a string list`;
+    const extra = list.find((p) => !allowed.has(norm2(p)));
+    if (extra !== void 0) return `userPolicy.filesystem.${k} grants ${extra}, the policy did not`;
+  }
+  const effDenied = strList(effFs.deniedPaths);
+  if (!effDenied) return "userPolicy.filesystem.deniedPaths is not a string list";
+  const denied = new Set(effDenied.map(norm2));
+  const lost = (strList(sentFs.deniedPaths) ?? []).find((p) => !denied.has(norm2(p)));
+  if (lost !== void 0) return `userPolicy.filesystem.deniedPaths lost ${lost}`;
+  return null;
+}
+function sandboxStateProblem(state, sent, platform = process.platform) {
   if (!state || typeof state !== "object") return "no sandbox state";
   const s = state;
-  const config2 = s.config && typeof s.config === "object" && !Array.isArray(s.config) ? s.config : null;
+  const config2 = asObj(s.config);
   if (!config2) return "the sandbox state has no effective config";
   if (config2.enabled !== true) return `the effective sandbox config is not enabled (enabled: ${String(config2.enabled)})`;
   if (config2.allowBypass === true) return "the effective sandbox config allows bypass requests";
   if (s.disabledForSession !== false) return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
   if (s.autoApproveBypass !== false) return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+  const weaker = configWeakerThanSent(config2, sent, platform);
+  if (weaker) return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
   return null;
 }
-async function readSandboxState(session, timeoutMs) {
+async function readSandboxState(session, timeoutMs, sent) {
   const call = rpcMethod(session, ["rpc", "sandbox"], "getState");
   if (!call) return "the SDK has no sandbox.getState RPC";
   try {
     const res = await withTimeout(call(), timeoutMs, "sandbox.getState()");
-    const problem = sandboxStateProblem(res);
+    const problem = sandboxStateProblem(res, sent);
     if (problem) return `sandbox.getState: ${problem}`;
     const source = res.configSource;
     return { configSource: typeof source === "string" ? source : "unknown" };
@@ -50098,7 +50167,7 @@ function isSandboxPolicyError(err) {
   } catch {
   }
   const text3 = [errText(err), typeof e2?.code === "string" ? e2.code : "", data].join("\n");
-  return /sandbox|managed[ _]policy/i.test(text3);
+  return /violates managed policy|invalid parameter 'sandboxConfig'|sandbox policy could not be resolved|managed_sandbox_policy_conflict/i.test(text3);
 }
 function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
@@ -50221,7 +50290,7 @@ function sandboxPath(value, platform = process.platform) {
     return P.isAbsolute(entry);
   }).join(P.delimiter);
 }
-var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, asObj, strList, LOOPBACK_HOSTS, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -50264,6 +50333,9 @@ var init_sandbox2 = __esm({
       const r = (0, import_node_child_process2.spawnSync)(cmd, args, { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
       return { ...r.error ? { error: r.error } : {}, status: r.status, stderr: r.stderr ?? "", stdout: r.stdout ?? "" };
     };
+    asObj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+    strList = (v) => v === void 0 ? [] : Array.isArray(v) && v.every((x) => typeof x === "string") ? v : null;
+    LOOPBACK_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "::1"]);
     SESSION_ENV_ALLOWLIST = [
       // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
       "PATH",
@@ -63289,6 +63361,8 @@ var init_sandbox_session = __esm({
       /** The `sandbox-escaped:` error once a `session.sandbox_state_changed` event showed the policy no longer in force. */
       stateEscape = null;
       toolNames = /* @__PURE__ */ new Map();
+      /** The policy confirm sent: the tripwire compares every later state with it. */
+      sent = null;
       /**
        * Whether createSession takes `config`: always when there is one, since SDK v2
        * forwards `permissions.sandbox` at create (v1 1.0.16 did not). confirm still
@@ -63357,10 +63431,11 @@ var init_sandbox_session = __esm({
       async confirm(session, config2, atCreate) {
         const { opts } = this;
         const sbx = this.state;
+        this.sent = config2;
         let why = await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
         if (!why) {
           sbx.applied = atCreate ? "create" : "options.update";
-          const state = await readSandboxState(session, opts.rpcTimeoutMs);
+          const state = await readSandboxState(session, opts.rpcTimeoutMs, config2);
           if (typeof state === "string") why = state;
           else sbx.configSource = state.configSource;
         }
@@ -63408,16 +63483,18 @@ var init_sandbox_session = __esm({
       /**
        * `session.sandbox_state_changed` data: a tripwire once the sandbox is
        * confirmed. In an enforced session a state that no longer shows the policy
-       * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses) is
-       * an escape: returns the `sandbox-escaped:` error (also kept in
-       * `stateEscape`), else null. Before confirm (create-time transitions) and in
+       * in force ({@link sandboxStateProblem}: disabled, an opt-out, bypasses, a
+       * config weaker than the policy confirm sent) is an escape: returns the
+       * `sandbox-escaped:` error (also kept in `stateEscape` and in the record's
+       * `stateEscaped`, which the factory parks on), else null. Before confirm (create-time transitions) and in
        * any other mode it returns null; confirm reads the state itself.
        */
       stateChanged(data) {
-        if (this.state?.mode !== "enforced" || this.stateEscape) return null;
-        const problem = sandboxStateProblem(data);
+        if (this.state?.mode !== "enforced" || this.stateEscape || !this.sent) return null;
+        const problem = sandboxStateProblem(data, this.sent);
         if (!problem) return null;
         this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
+        this.state.stateEscaped = this.stateEscape;
         return this.stateEscape;
       }
       /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
@@ -66444,7 +66521,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.stateEscaped === void 0 || isStr2(sbx.stateEscaped)) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -78247,11 +78324,11 @@ function sandboxPark(result) {
   const s = result.sandbox;
   if (!s) return null;
   if (s.mode === "refused") return { name: "sandbox-unavailable", reason: result.error ?? s.reason ?? "the sandbox is not confirmed" };
-  if (s.unsandboxedCalls > 0 && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+  if ((s.unsandboxedCalls > 0 || s.stateEscaped) && s.mode !== "detect-only") return { name: "sandbox-escaped", reason: result.error ?? s.stateEscaped ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
   return null;
 }
 function laneSandboxEnforced(s) {
-  return !!s && s.unsandboxedCalls === 0 && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
+  return !!s && s.unsandboxedCalls === 0 && !s.stateEscaped && (s.mode === "enforced" || s.mode === "read-only-no-shell" || s.mode === "refused");
 }
 function shipFollower(phase) {
   if (phase === "gates") return "gates";
@@ -85170,7 +85247,7 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
        */
       unsandboxedLanes(head, gone2) {
         if (this.forge?.kind === "local") return "";
-        const loose = this.state.lanes.filter((l) => l.kind !== "review" && l.kind !== "coding-agent" && (l.sandbox?.mode !== "enforced" || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
+        const loose = this.state.lanes.filter((l) => l.kind !== "review" && l.kind !== "coding-agent" && (l.sandbox?.mode !== "enforced" || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
         if (loose.length === 0) return "";
         const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
         if (this.state.unsandboxedAck === head && !gone2) return accepted;
@@ -89380,7 +89457,7 @@ function record2(role, result, events) {
     role,
     state: result?.state ?? "not started",
     error: result?.error ?? null,
-    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.reason ? { reason: s.reason } : {} } : null,
+    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...s.enforcement ? { enforcement: s.enforcement } : {}, canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...s.stateEscaped ? { stateEscaped: s.stateEscaped } : {}, ...s.reason ? { reason: s.reason } : {} } : null,
     shellCalls: att.calls,
     unattestedShellCalls: att.unattested,
     okShellCalls: att.ok,

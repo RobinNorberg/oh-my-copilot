@@ -369,6 +369,7 @@ export interface SandboxLaneState {
     };
     canary: string;
     unsandboxedCalls: number;
+    stateEscaped?: string;
     reason?: string;
 }
 export interface SandboxLaneRecord {
