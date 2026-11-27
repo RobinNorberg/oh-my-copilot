@@ -54,9 +54,10 @@ describe('smokeStoredLogin (the smoke harness)', () => {
 
   it('another letter case on Linux/macOS (not read by the runtime) wins over the stored token, as for lanes', () => {
     const dir = configDir(loggedIn({ authTokens: { 'https://github.com:me': STORED } }));
-    expect(smokeStoredLogin({ copilot_github_token: ENV_TOKEN }, dir, 'linux')).toEqual({ userConfigDir: dir, token: ENV_TOKEN });
+    // envVar names the source by its exact spelling (sdk.runtime reports it), so it is never called the stored login.
+    expect(smokeStoredLogin({ copilot_github_token: ENV_TOKEN }, dir, 'linux')).toEqual({ userConfigDir: dir, token: ENV_TOKEN, envVar: 'copilot_github_token' });
     const keyring = configDir(loggedIn({}));
-    expect(smokeStoredLogin({ Copilot_GitHub_Token: ENV_TOKEN }, keyring, 'darwin')).toEqual({ userConfigDir: keyring, token: ENV_TOKEN });
+    expect(smokeStoredLogin({ Copilot_GitHub_Token: ENV_TOKEN }, keyring, 'darwin')).toEqual({ userConfigDir: keyring, token: ENV_TOKEN, envVar: 'Copilot_GitHub_Token' });
     // The lane side resolves the same value (envValue, any case).
     expect(sessionGitHubToken({ copilot_github_token: ENV_TOKEN }, { userConfigDir: dir, platform: 'linux' })).toBe(ENV_TOKEN);
   });

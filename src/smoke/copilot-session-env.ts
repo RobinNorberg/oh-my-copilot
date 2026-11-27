@@ -284,14 +284,16 @@ export function storedLoginToken(userConfigDir: string, platform: NodeJS.Platfor
  * the stored token, as it does for lanes (envValue). The tier attaches it only
  * when the runtime turns out not signed in (listModelIds). The token goes only
  * over the session RPC (`github.token`), never into an env, the smoke home
- * or a file.
+ * or a file. `envVar` names (exact spelling, never the value) the env
+ * variable the token came from; unset for the stored login's token.
  */
-export function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform: NodeJS.Platform = process.platform): { userConfigDir: string; token: string } | undefined {
+export function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform: NodeJS.Platform = process.platform): { userConfigDir: string; token: string; envVar?: string } | undefined {
   if (platform === 'win32') return undefined;
   const set = (v: string | undefined): v is string => typeof v === 'string' && v.trim() !== '';
   if (set(env.COPILOT_GITHUB_TOKEN)) return undefined;
   const other = Object.keys(env).find((k) => k.toUpperCase() === 'COPILOT_GITHUB_TOKEN' && set(env[k]));
-  const token = other !== undefined ? env[other] : storedLoginToken(userConfigDir, platform);
+  if (other !== undefined) return { userConfigDir, token: env[other]!, envVar: other };
+  const token = storedLoginToken(userConfigDir, platform);
   return token ? { userConfigDir, token } : undefined;
 }
 

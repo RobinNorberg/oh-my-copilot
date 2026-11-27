@@ -136,10 +136,12 @@ export declare function storedLoginToken(userConfigDir: string, platform?: NodeJ
  * the stored token, as it does for lanes (envValue). The tier attaches it only
  * when the runtime turns out not signed in (listModelIds). The token goes only
  * over the session RPC (`github.token`), never into an env, the smoke home
- * or a file.
+ * or a file. `envVar` names (exact spelling, never the value) the env
+ * variable the token came from; unset for the stored login's token.
  */
 export declare function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform?: NodeJS.Platform): {
     userConfigDir: string;
     token: string;
+    envVar?: string;
 } | undefined;
 //# sourceMappingURL=copilot-session-env.d.ts.map

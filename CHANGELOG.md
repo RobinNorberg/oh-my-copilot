@@ -6,7 +6,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg smoke copilot --tier 2` no longer runs scenarios when the runtime lists no models.** An empty model list means the runtime is not signed in or its credential is not entitled to Copilot models; the scenarios then could only time out (the `team` scenario waited its full 300 s). Now `sdk.runtime` fails with a message that names the credential source (names only, never a value) and says that no scenario was run and no credits were spent, each scenario's checks are reported as not run, and the exit code is `1`. Cassette record and replay runs are unchanged.
+- **`omg smoke copilot --tier 2` no longer runs scenarios when the runtime lists no models, or is not signed in with no credential to attach.** An empty model list means the runtime is not signed in or its credential is not entitled to Copilot models; a "Not authenticated" answer when the smoke found no stored login token or other token to attach means every scenario would start just as signed out. The scenarios then could only time out (the `team` scenario waited its full 300 s). Now `sdk.runtime` fails with a message that names the credential source (names only, never a value; a `COPILOT_GITHUB_TOKEN` in another letter case attached on Linux or macOS is named by its spelling) and says that no credits were spent, each scenario's checks are reported as not run, and the exit code is `1`. Any other model list failure (a timeout, an HTTP error) still runs the scenarios. Cassette record and replay runs are unchanged.
+- **`--sdk-static` fails on the same answers.** A CI `COPILOT_GITHUB_TOKEN` secret that is not entitled now fails the "Tier 2 static checks" step on every run, still without spending credits.
 
 # oh-my-copilot v5.33.1
 

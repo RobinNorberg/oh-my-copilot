@@ -746,7 +746,8 @@ export interface SdkTierInput {
   storedLogin?: StoredLogin;
 }
 
-export interface StoredLogin { userConfigDir: string; token: string }
+/** `envVar`: the env variable (its exact spelling, a name only) the token came from (smokeStoredLogin); unset: the stored login's. */
+export interface StoredLogin { userConfigDir: string; token: string; envVar?: string }
 
 export interface SdkTierResult {
   checks: SmokeCheck[];
@@ -797,25 +798,51 @@ export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scen
 /** Every scenario's checks when the runtime listed no models (sdk.runtime says why). */
 export const NO_MODELS_SKIP_DETAIL = 'skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent';
 
-/** sdk.runtime's addition when the runtime listed no models; `source` names the credential, never a value. */
-export function noModelsDetail(source: string): string {
+/** Every scenario's checks when the runtime is not signed in and no credential was found to attach (sdk.runtime says why). */
+export const SIGNED_OUT_SKIP_DETAIL = 'skipped: not run, the runtime is not signed in and no credential was found to attach (see sdk.runtime); no credits spent';
+
+const TOKEN_HINT = 'Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token '
+  + 'owned by the user account, with the account permission "Copilot Requests"';
+
+/** What a stopped tier did not do: with no scenario requested (`--sdk-static`) only the credits are worth saying. */
+const nothingRun = (scenarios: boolean) => (scenarios ? 'No scenario was run and no credits were spent' : 'No credits were spent');
+
+/**
+ * sdk.runtime's addition when the runtime listed no models; `source` names the credential, never a value.
+ * `scenarios`: whether any scenario was requested.
+ */
+export function noModelsDetail(source: string, scenarios = true): string {
   return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source}). `
-    + 'No scenario was run and no credits were spent. Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token '
-    + 'owned by the user account, with the account permission "Copilot Requests"';
+    + `${nothingRun(scenarios)}. ${TOKEN_HINT}`;
 }
 
 /**
- * Which credential the runtime had, by env var NAME only (never a value): the stored login attached to the sessions,
- * a token var in the runtime env (precedence as `copilot help environment`: COPILOT_GITHUB_TOKEN, GH_TOKEN,
- * GITHUB_TOKEN, each over stored credentials), the runtime's own stored login (the copied login identity), or none.
+ * sdk.runtime's addition when listModels() answered "Not authenticated" and the smoke had no credential to attach
+ * (no stored login token, no token var the runtime does not read itself). Every scenario's runtime, lane, team host
+ * and `copilot -p` process starts from the same env and login identity, so none could sign in either.
  */
-export function credentialSource(env: NodeJS.ProcessEnv, attached: boolean, identity: boolean, platform: NodeJS.Platform): string {
+export function signedOutDetail(source: string, scenarios = true): string {
+  return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source}). `
+    + `${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+}
+
+/**
+ * Which credential the runtime had, by env var NAME only (never a value): the token attached to the sessions (an env
+ * var the runtime does not read itself, else the stored login's), a token var in the runtime env (precedence as
+ * `copilot help environment`: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN, each over stored credentials), the
+ * runtime's own stored login (the copied login identity), or none.
+ */
+export function credentialSource(env: NodeJS.ProcessEnv, attached: Pick<StoredLogin, 'envVar'> | undefined, identity: boolean, platform: NodeJS.Platform): string {
+  if (attached) {
+    return attached.envVar
+      ? `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)`
+      : 'stored login attached (the runtime itself was not signed in)';
+  }
   // The runtime reads these in any letter case on Windows only (smokeStoredLogin).
   const raw = (name: string) => env[(platform === 'win32' ? Object.keys(env).find((k) => k.toUpperCase() === name) : undefined) ?? name];
   const set = (name: string) => (raw(name)?.trim() ?? '') !== '';
-  if (attached) return 'stored login attached (the runtime itself was not signed in)';
   const named = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].find(set);
-  if (named) return `${named} is set and overrides the stored login`;
+  if (named) return identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`;
   const empty = raw('COPILOT_GITHUB_TOKEN') !== undefined ? '; COPILOT_GITHUB_TOKEN is set but empty' : '';
   if (identity) return `stored login (the runtime's own; no token env var with a value)${empty}`;
   return `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty}`;
@@ -942,20 +969,25 @@ async function runSdkTierUnscrubbed(input: SdkTierInput, events: SdkTierResult['
     const runtime = evaluateSdkRuntime(status, input.binVersion, modelLabel);
     // Auth hints (runSdkTier scrubs the token from them): a later "Not authenticated" with the login attached points
     // at a stale stored entry; a login left out says what listModels() answered instead.
-    if (login) runtime.detail += ' (stored login attached)';
-    else if (input.storedLogin && !models.ok) runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    // A token from an env var the runtime does not read itself (smokeStoredLogin) is named by that var, never as the stored login.
+    if (login) runtime.detail += login.envVar ? ` (${login.envVar} attached over the session RPC)` : ' (stored login attached)';
+    else if (input.storedLogin && !models.ok) runtime.detail += `; ${input.storedLogin.envVar ?? 'stored login'} not used: listModels() answered ${excerpt(models.error, 160)}`;
     // An empty list after the sign-in handling: the runtime cannot serve a model, so no scenario starts. Not for a
     // cassette client, whose model list is a miss by design (replay is credential-free; the model is pinned).
     const noModels = !loaded.cassette && models.ok && models.value.length === 0;
-    if (noModels) {
+    // "Not authenticated" with nothing to attach is a dead end too: every scenario starts from this env and login
+    // identity. Any other listModels() failure (timeout, HTTP error) keeps the scenarios running.
+    const signedOut = !loaded.cassette && !login && !models.ok && /not authenticated/i.test(models.error);
+    if (noModels || signedOut) {
       runtime.ok = false;
-      runtime.detail += `; ${noModelsDetail(credentialSource(input.env, !!login, loginIdentity(input.home).loggedInUsers !== undefined, input.platform ?? process.platform))}`;
+      const source = credentialSource(input.env, login, loginIdentity(input.home).loggedInUsers !== undefined, input.platform ?? process.platform);
+      runtime.detail += `; ${(noModels ? noModelsDetail : signedOutDetail)(source, input.scenarios.length > 0)}`;
     }
     checks.push(runtime);
 
     checks.push(...await staticChecks(client, sessionInput, loaded, bin));
 
-    let stopReason: string | undefined = noModels ? NO_MODELS_SKIP_DETAIL : undefined;
+    let stopReason: string | undefined = noModels ? NO_MODELS_SKIP_DETAIL : signedOut ? SIGNED_OUT_SKIP_DETAIL : undefined;
     // chain rewrites the shared sandbox (route table, a project skill): run it
     // last. team runs before it, so its worker sessions never meet that route
     // table, and its copied worker logs fall in its own time slice.
