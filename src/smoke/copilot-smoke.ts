@@ -956,7 +956,7 @@ export function tier2StoredLogin(
   mode: 'record' | 'replay' | undefined,
   deny: (values: Iterable<string>) => void = addRecordingDenyLiterals,
   platform: NodeJS.Platform = process.platform,
-): { userConfigDir: string; token: string } | undefined {
+): { userConfigDir: string; token: string; envVar?: string } | undefined {
   if (mode === 'replay') return undefined;
   const login = smokeStoredLogin(env, configDir ?? getCopilotConfigDir(), platform);
   if (login) deny([login.token]);

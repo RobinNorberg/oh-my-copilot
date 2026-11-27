@@ -49069,7 +49069,8 @@ function smokeStoredLogin(env2, userConfigDir, platform = process.platform) {
   const set2 = (v) => typeof v === "string" && v.trim() !== "";
   if (set2(env2.COPILOT_GITHUB_TOKEN)) return void 0;
   const other = Object.keys(env2).find((k) => k.toUpperCase() === "COPILOT_GITHUB_TOKEN" && set2(env2[k]));
-  const token = other !== void 0 ? env2[other] : storedLoginToken(userConfigDir, platform);
+  if (other !== void 0) return { userConfigDir, token: env2[other], envVar: other };
+  const token = storedLoginToken(userConfigDir, platform);
   return token ? { userConfigDir, token } : void 0;
 }
 function tokenFromMap(map2, host, login3, now, depth) {
@@ -52632,6 +52633,30 @@ function isFactoryRunScenario(name) {
 function isCliScenario(name) {
   return CLI_SCENARIOS.includes(name);
 }
+function noModelsDetail(source, scenarios = true) {
+  return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source.text}). ${nothingRun(scenarios)}. ${TOKEN_HINT}`;
+}
+function signedOutDetail(source, scenarios = true) {
+  const { held } = source;
+  if (!held) {
+    return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source.text}). ${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+  }
+  const lead = held.kind === "token" ? held.name : "its own stored login";
+  const advice2 = held.kind === "token" ? `Check ${held.name}: it must be a valid fine-grained personal access token owned by the user account, with the account permission "Copilot Requests"` : "Sign in again with `copilot login`";
+  return `the runtime answered "Not authenticated" with ${lead} and the smoke had no other credential to attach (credential: ${source.text}). ${nothingRun(scenarios)}. ${advice2}.`;
+}
+function credentialSource(env2, attached, identity, platform) {
+  if (attached) {
+    return attached.envVar ? { text: `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)`, held: { kind: "token", name: attached.envVar } } : { text: "stored login attached (the runtime itself was not signed in)", held: { kind: "login" } };
+  }
+  const raw = (name) => env2[(platform === "win32" ? Object.keys(env2).find((k) => k.toUpperCase() === name) : void 0) ?? name];
+  const set2 = (name) => (raw(name)?.trim() ?? "") !== "";
+  const named = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].find(set2);
+  if (named) return { text: identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`, held: { kind: "token", name: named } };
+  const empty2 = raw("COPILOT_GITHUB_TOKEN") !== void 0 ? "; COPILOT_GITHUB_TOKEN is set but empty" : "";
+  if (identity) return { text: `stored login (the runtime's own; no token env var with a value)${empty2}`, held: { kind: "login" } };
+  return { text: `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty2}` };
+}
 async function runSdkTier(input2) {
   const token = input2.storedLogin?.token;
   if (!token) return runSdkTierUnscrubbed(input2);
@@ -52737,11 +52762,18 @@ async function runSdkTierUnscrubbed(input2, events = {}) {
     sdkInfo.model = choice.label;
     const modelLabel = `${choice.label} (${choice.note})`;
     const runtime = evaluateSdkRuntime(status, input2.binVersion, modelLabel);
-    if (login3) runtime.detail += " (stored login attached)";
-    else if (input2.storedLogin && !models.ok) runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    if (login3) runtime.detail += login3.envVar ? ` (${login3.envVar} attached over the session RPC)` : " (stored login attached)";
+    else if (input2.storedLogin && !models.ok) runtime.detail += `; ${input2.storedLogin.envVar ?? "stored login"} not used: listModels() answered ${excerpt(models.error, 160)}`;
+    const noModels = !loaded2.cassette && models.ok && models.value.length === 0;
+    const signedOut = !loaded2.cassette && !login3 && !models.ok && /not authenticated/i.test(models.error);
+    if (noModels || signedOut) {
+      runtime.ok = false;
+      const source = credentialSource(input2.env, login3, loginIdentity(input2.home).loggedInUsers !== void 0, input2.platform ?? process.platform);
+      runtime.detail += `; ${(noModels ? noModelsDetail : signedOutDetail)(source, input2.scenarios.length > 0)}`;
+    }
     checks.push(runtime);
     checks.push(...await staticChecks(client, sessionInput, loaded2, bin));
-    let stopReason;
+    let stopReason = noModels ? NO_MODELS_SKIP_DETAIL : signedOut ? SIGNED_OUT_SKIP_DETAIL : void 0;
     const order = ["team", "chain"];
     let names = [...input2.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input2.scenarios.includes(s))];
     if (tape) {
@@ -53261,7 +53293,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     wedged
   };
 }
-var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, MIN_COPILOT_CLI, LEGACY_SDK_PACKAGE, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, COPILOT_UPDATE_COMMAND, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, MIN_COPILOT_CLI, LEGACY_SDK_PACKAGE, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, COPILOT_UPDATE_COMMAND, reject, RUNTIME_WEDGED_DETAIL, NO_MODELS_SKIP_DETAIL, SIGNED_OUT_SKIP_DETAIL, TOKEN_HINT, nothingRun;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -53299,6 +53331,10 @@ var init_copilot_sdk_driver = __esm({
     COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
+    NO_MODELS_SKIP_DETAIL = "skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent";
+    SIGNED_OUT_SKIP_DETAIL = "skipped: not run, the runtime is not signed in and the smoke had nothing to attach (see sdk.runtime); no credits spent";
+    TOKEN_HINT = 'Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token owned by the user account, with the account permission "Copilot Requests"';
+    nothingRun = (scenarios) => scenarios ? "No scenario was run and no credits were spent" : "No credits were spent";
   }
 });
 
@@ -67961,9 +67997,9 @@ async function runSandboxed(argv, o, deps) {
       dotnetWrites.push(...d.readwrite);
       dotnetNotes.push(...d.notes);
     }
-    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
-    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
-    const secrets = secretValues(deps.env, credentialSource);
+    const credentialSource2 = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+    const gitHubToken = sessionGitHubToken(deps.env, credentialSource2);
+    const secrets = secretValues(deps.env, credentialSource2);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const c = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
       path: bin,
@@ -68002,7 +68038,7 @@ async function runSandboxed(argv, o, deps) {
           ...dotnetWrites.length > 0 ? { extraReadwrite: dotnetWrites } : {},
           ...o.network === "nuget" ? { onlyHosts: NUGET_HOSTS } : {},
           // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
-          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) },
+          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource2.userConfigDir, deps.platform) },
           ...o.mainRoot ? { mainRoot: (0, import_node_path18.resolve)(o.mainRoot) } : {},
           ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path18.resolve)(o.nodeModulesTarget) } : {},
           ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path18.resolve)(p)) } : {}

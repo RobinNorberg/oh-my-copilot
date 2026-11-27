@@ -359,9 +359,11 @@ export interface SdkTierInput {
      */
     storedLogin?: StoredLogin;
 }
+/** `envVar`: the env variable (its exact spelling, a name only) the token came from (smokeStoredLogin); unset: the stored login's. */
 export interface StoredLogin {
     userConfigDir: string;
     token: string;
+    envVar?: string;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];
@@ -394,6 +396,39 @@ export declare function scenarioPlaceholderDirs(input: Pick<SdkTierInput, 'root'
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
+/** Every scenario's checks when the runtime listed no models (sdk.runtime says why). */
+export declare const NO_MODELS_SKIP_DETAIL = "skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent";
+/** Every scenario's checks when the runtime is not signed in and the smoke had nothing to attach (sdk.runtime says why). */
+export declare const SIGNED_OUT_SKIP_DETAIL = "skipped: not run, the runtime is not signed in and the smoke had nothing to attach (see sdk.runtime); no credits spent";
+/**
+ * sdk.runtime's addition when the runtime listed no models; `source` names the credential, never a value.
+ * `scenarios`: whether any scenario was requested.
+ */
+export declare function noModelsDetail(source: CredentialSource, scenarios?: boolean): string;
+/**
+ * sdk.runtime's addition when listModels() answered "Not authenticated" and the smoke had no credential to attach
+ * (no stored login token, no token var the runtime does not read itself). Every scenario's runtime, lane, team host
+ * and `copilot -p` process starts from the same env and login identity, so none could sign in either. A credential
+ * the runtime read itself (a token var, its own stored login) is the one to check; only with none is the advice to add one.
+ */
+export declare function signedOutDetail(source: CredentialSource, scenarios?: boolean): string;
+/** {@link credentialSource}: the text names the credential; `held` is the one in play (none: nothing was found). */
+export interface CredentialSource {
+    text: string;
+    held?: {
+        kind: 'token';
+        name: string;
+    } | {
+        kind: 'login';
+    };
+}
+/**
+ * Which credential the runtime had, by env var NAME only (never a value): the token attached to the sessions (an env
+ * var the runtime does not read itself, else the stored login's), a token var in the runtime env (precedence as
+ * `copilot help environment`: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN, each over stored credentials), the
+ * runtime's own stored login (the copied login identity), or none.
+ */
+export declare function credentialSource(env: NodeJS.ProcessEnv, attached: Pick<StoredLogin, 'envVar'> | undefined, identity: boolean, platform: NodeJS.Platform): CredentialSource;
 /**
  * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
  * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,

@@ -101,6 +101,13 @@ npm i --no-save --omit=optional --ignore-scripts @microsoft/copilot-sdk@2
 
 **Scenarios.** `smoke` and `guardrail` are the default; `--scenario` takes a comma-separated list or `all`. Each scenario runs in its own session in a temp git repo with an isolated `COPILOT_HOME`, a per-scenario timeout, and its full event stream kept as `artifacts.events.<name>`. `scn.<name>.cost` reports AI credits and the legacy premium requests. `chain` is the exception: it is opt-in (never in `all`), uses no SDK session, and spawns two real `copilot -p` factory links that hand off through `OMC_CHAIN_LINK` and the SessionEnd worker (see [REFERENCE.md](./REFERENCE.md#factory-chains-on-copilot)). Its links run without `--max-ai-credits`, so `--max-credits` does not bound them, and a link-2 process still running after the timeout is not killed.
 
+**Signed out.** Two answers stop the tier before any scenario, and `sdk.runtime` fails with the credential source named (names only, never a value):
+
+- The model list is empty after the stored login handling: the runtime is not signed in or its credential is not entitled to Copilot models. Each scenario's checks fail with `skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent`.
+- `listModels()` answers "Not authenticated" and the smoke found nothing to attach (no stored plaintext login token, no `COPILOT_GITHUB_TOKEN` spelling the runtime does not read itself). Every scenario's runtime, lane, team host and `copilot -p` process starts from the same env and login identity, so none could sign in either. Each scenario's checks fail with `skipped: not run, the runtime is not signed in and the smoke had nothing to attach (see sdk.runtime); no credits spent`.
+
+The free static checks still report and the exit code is `1`. `--sdk-static` fails the same way (its `sdk.runtime` detail then says only that no credits were spent), so a bad CI secret shows on the free run. Any other `listModels()` failure (a timeout, an HTTP error) still runs the scenarios. A cassette run (`--record`/`--replay`) is exempt, because its model list is never a live answer.
+
 **The `team` scenario.** Also opt-in and outside `all`. It runs the plugin's own `bridge/cli.cjs` as child processes, so it proves the default transport end to end:
 
 1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits. The workers run on the session's model (`OMC_TEAM_SDK_MODEL`): `--model`, a cassette's pinned model, else the cheap model the driver picked. Only when the runtime lists no cheap model do they fall back to `team.sdk.model`, else runtime auto, which measured 20.7 AI credits over the two workers on Copilot CLI 1.0.116 and fails `credits`.
@@ -167,7 +174,7 @@ The `smoke` job in `.github/workflows/ci.yml` runs the smoke on `ubuntu-latest` 
 
 **Secret.** Add a repository secret named `COPILOT_GITHUB_TOKEN` under Settings, Secrets and variables, Actions. Its value is a fine-grained personal access token of a user with an active Copilot subscription, with the account permission "Copilot Requests" (see "Authenticate with a Personal Access Token" in the `@github/copilot` README). Create it at <https://github.com/settings/personal-access-tokens/new>. It needs no repository permissions. AI Credits are billed to that user.
 
-**Static checks need the token too.** A fresh `COPILOT_HOME` has no login, and without auth the runtime skips loading custom agents, so `sdk.agents` would fail. The whole job is therefore gated on the secret.
+**Static checks need the token too.** A fresh `COPILOT_HOME` has no login, and without auth the runtime skips loading custom agents, so `sdk.agents` would fail. The whole job is therefore gated on the secret. A secret that is set but not entitled (expired, a classic token, or missing "Copilot Requests") fails the "Tier 2 static checks" step on every run: the runtime lists no models or answers "Not authenticated", so `sdk.runtime` fails (see "Signed out" above). The step spends no credits either way.
 
 **No secret, no failure.** The first step reads the secret into a step env and sets an output; every later step is conditioned on it. Without the secret the job passes with the notice `Copilot smoke skipped`. GitHub never passes secrets to PRs from forks or to Dependabot runs, so those always skip.
 

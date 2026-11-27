@@ -209,5 +209,6 @@ export declare function keptHomeLoginNote(keepHome: boolean, storedLogin: boolea
 export declare function tier2StoredLogin(env: NodeJS.ProcessEnv, configDir: string | undefined, mode: 'record' | 'replay' | undefined, deny?: (values: Iterable<string>) => void, platform?: NodeJS.Platform): {
     userConfigDir: string;
     token: string;
+    envVar?: string;
 } | undefined;
 //# sourceMappingURL=copilot-smoke.d.ts.map
