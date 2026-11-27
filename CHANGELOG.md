@@ -2,7 +2,9 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.33.1
+
+## [5.33.1] - 2026-11-27
 
 ### Fixed
 
