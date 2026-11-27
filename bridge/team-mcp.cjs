@@ -22433,6 +22433,7 @@ var init_copilot_sdk_driver = __esm({
     init_process_utils2();
     init_copilot_session_env();
     init_windows_search();
+    init_sandbox();
     init_handler();
     init_run();
   }

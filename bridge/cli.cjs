@@ -11904,6 +11904,14 @@ function storedLoginToken(userConfigDir, platform = process.platform, now2 = Dat
   }
   return void 0;
 }
+function smokeStoredLogin(env2, userConfigDir, platform = process.platform) {
+  if (platform === "win32") return void 0;
+  const set2 = (v) => typeof v === "string" && v.trim() !== "";
+  if (set2(env2.COPILOT_GITHUB_TOKEN)) return void 0;
+  const other = Object.keys(env2).find((k) => k.toUpperCase() === "COPILOT_GITHUB_TOKEN" && set2(env2[k]));
+  const token = other !== void 0 ? env2[other] : storedLoginToken(userConfigDir, platform);
+  return token ? { userConfigDir, token } : void 0;
+}
 function tokenFromMap(map2, host, login3, now2, depth) {
   if (!map2 || typeof map2 !== "object" || Array.isArray(map2)) return void 0;
   for (const [key, value] of Object.entries(map2)) {
@@ -62786,6 +62794,7 @@ __export(copilot_sdk_driver_exports, {
   findLegacySdkVersion: () => findLegacySdkVersion,
   globalModuleRoots: () => globalModuleRoots,
   importFromDir: () => importFromDir,
+  listModelIds: () => listModelIds,
   loadCopilotSdk: () => loadCopilotSdk,
   memoSdkProtocolProbe: () => memoSdkProtocolProbe,
   prepareFiletools: () => prepareFiletools,
@@ -63195,7 +63204,44 @@ function isCliScenario(name) {
   return CLI_SCENARIOS.includes(name);
 }
 async function runSdkTier(input2) {
+  const token = input2.storedLogin?.token;
+  if (!token) return runSdkTierUnscrubbed(input2);
+  const scrub = (text9) => scrubTokens(text9, token.length >= 8 ? [token] : []);
   const events = {};
+  try {
+    const result = await runSdkTierUnscrubbed(input2, events);
+    return {
+      ...result,
+      checks: result.checks.map((c) => ({ ...c, id: scrub(c.id), detail: scrub(c.detail), ...c.evidence !== void 0 ? { evidence: scrub(c.evidence) } : {} })),
+      ...result.skipped !== void 0 ? { skipped: scrub(result.skipped) } : {}
+    };
+  } catch (err) {
+    throw new Error(scrub(errText3(err)));
+  } finally {
+    for (const path30 of Object.values(events)) {
+      if (!path30) continue;
+      let text9;
+      try {
+        text9 = (0, import_fs62.readFileSync)(path30, "utf-8");
+      } catch {
+        continue;
+      }
+      const clean = scrub(text9);
+      if (clean === text9) continue;
+      const tmp = `${path30}.tmp`;
+      try {
+        (0, import_fs62.writeFileSync)(tmp, clean);
+        (0, import_fs62.renameSync)(tmp, path30);
+      } catch {
+        try {
+          (0, import_fs62.rmSync)(tmp, { force: true });
+        } catch {
+        }
+      }
+    }
+  }
+}
+async function runSdkTierUnscrubbed(input2, events = {}) {
   let loaded2;
   try {
     loaded2 = await input2.loadSdk();
@@ -63239,6 +63285,7 @@ async function runSdkTier(input2) {
   let runOrder = [];
   let pid;
   let wedged = false;
+  let login3;
   try {
     try {
       await withTimeout3(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "client.start()");
@@ -63252,12 +63299,19 @@ async function runSdkTier(input2) {
       sdkInfo.runtimeVersion = typeof status.value.version === "string" ? status.value.version : null;
       sdkInfo.protocolVersion = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : null;
     }
-    const models = await rpc(() => client.listModels(), "listModels()");
-    const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input2.model);
+    const { models, login: attached } = await listModelIds(client, input2, !!loaded2.cassette);
+    login3 = attached;
+    const sessionInput = { ...input2 };
+    if (login3) sessionInput.storedLogin = login3;
+    else delete sessionInput.storedLogin;
+    const choice = chooseModel(models.ok ? models.value : [], input2.model);
     sdkInfo.model = choice.label;
     const modelLabel2 = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel2));
-    checks.push(...await staticChecks(client, input2, loaded2, bin));
+    const runtime2 = evaluateSdkRuntime(status, input2.binVersion, modelLabel2);
+    if (login3) runtime2.detail += " (stored login attached)";
+    else if (input2.storedLogin && !models.ok) runtime2.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    checks.push(runtime2);
+    checks.push(...await staticChecks(client, sessionInput, loaded2, bin));
     let stopReason;
     const order = ["team", "chain"];
     let names2 = [...input2.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input2.scenarios.includes(s))];
@@ -63339,6 +63393,7 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...login3 ? { userConfigDir: login3.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
@@ -63352,12 +63407,13 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...login3 ? { userConfigDir: login3.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
         eventsPath: path30,
         ...choice.model ? { model: choice.model } : {}
-      }) : await runScenario(client, input2, name, choice.model, modelLabel2, path30, input2.maxCredits - total.credits);
+      }) : await runScenario(client, sessionInput, name, choice.model, modelLabel2, path30, input2.maxCredits - total.credits);
       entries.push({ name, run: run3, start });
       const cost = runCost(run3);
       total.premiumRequests += cost.premiumRequests;
@@ -63409,7 +63465,7 @@ async function runSdkTier(input2) {
       checks.push(failed3.length > 0 ? { id: `scn.${entry2.name}.record`, ok: false, detail: `not written: the scenario failed (${failed3.join(", ")})${keptAt(tape, entry2.name)}` } : recordCheck(tape, entry2.name, { model: input2.model, maxCredits: input2.maxCredits, cost: runCost(entry2.run), runOrder }, ran.map((e2) => e2.name)));
     }
   }
-  return { checks, sdk: sdkInfo, cost: total, events, ...tape?.mode === "replay" ? { replay } : {} };
+  return { checks, sdk: sdkInfo, cost: total, events, ...tape?.mode === "replay" ? { replay } : {}, ...login3 ? { storedLoginUsed: true } : {} };
 }
 function keptAt(run3, name) {
   try {
@@ -63440,6 +63496,7 @@ async function staticChecks(client, input2, loaded2, bin) {
         workingDirectory: input2.projectDir,
         mcp: { disabledServers: ["github-mcp-server"] },
         tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
+        ...sessionLogin(input2),
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -63623,6 +63680,39 @@ async function currentToolMetadata(session) {
   }
   return meta3;
 }
+function sessionLogin(input2) {
+  return input2.storedLogin ? { github: { token: input2.storedLogin.token } } : {};
+}
+async function listModelIds(client, input2, cassette) {
+  const server = await rpc(() => client.listModels(), "listModels()");
+  if (server.ok) return { models: { ok: true, value: server.value.map((m) => String(m.id)) } };
+  const login3 = input2.storedLogin && /not authenticated/i.test(server.error) ? input2.storedLogin : void 0;
+  if (!login3 || cassette) return { models: server, ...login3 ? { login: login3 } : {} };
+  let session;
+  let pending;
+  try {
+    pending = client.createSession({
+      permissions: { onRequest: () => reject("omg smoke: the model list session grants nothing") },
+      plugins: { directories: [] },
+      workingDirectory: input2.projectDir,
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [], availableTools: [] },
+      ...sessionLogin({ storedLogin: login3 })
+    });
+    session = await withTimeout3(pending, RPC_TIMEOUT_MS, "createSession()");
+    const model = session.rpc.model;
+    if (typeof model?.list !== "function") return { models: server, login: login3 };
+    const listed2 = await rpc(() => model.list(), "session.model.list");
+    if (!listed2.ok) return { models: listed2, login: login3 };
+    const list3 = Array.isArray(listed2.value?.list) ? listed2.value.list : [];
+    return { models: { ok: true, value: list3.map((m) => m && typeof m === "object" ? m.id : void 0).filter((id) => typeof id === "string") }, login: login3 };
+  } catch (err) {
+    if (!session && pending) void pending.then((late) => closeSession(client, late, input2.keepHome), () => void 0);
+    return { models: { ok: false, error: errText3(err) }, login: login3 };
+  } finally {
+    if (session) await closeSession(client, session, input2.keepHome);
+  }
+}
 async function closeSession(client, session, keepHome) {
   try {
     await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
@@ -63683,6 +63773,7 @@ async function runScenario(client, input2, name, model, modelLabel2, eventsPath,
       workingDirectory: input2.projectDir,
       mcp: { disabledServers: ["github-mcp-server"] },
       tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
+      ...sessionLogin(input2),
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -63758,6 +63849,7 @@ var init_copilot_sdk_driver = __esm({
     init_process_utils2();
     init_copilot_session_env();
     init_windows_search();
+    init_sandbox2();
     init_handler();
     init_run();
     SDK_MIN_VERSION = "2.0.3";
@@ -105107,7 +105199,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
   };
   const { rename: rename9 } = await import("fs/promises");
   const {
-    renameSync: renameSync30,
+    renameSync: renameSync31,
     readFileSync: readFileSync203,
     existsSync: fsExistsSync
   } = await import("fs");
@@ -105199,7 +105291,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync30(processingOutputFile, stalePath);
+                renameSync31(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -105209,7 +105301,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
           }
           const raw = readFileSync203(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync30(outputFile, processingOutputFile);
+          renameSync31(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
@@ -164028,7 +164120,7 @@ function prepareFactoryRepo(dir) {
   return null;
 }
 function copilotLanes(input2) {
-  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.home };
+  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.userConfigDir ?? input2.home };
   return new CopilotLaneBackend(new CopilotRunManager(deps), { allowLive: true });
 }
 function factoryRunLimits(timeoutMs) {
@@ -164321,7 +164413,7 @@ function sandboxLanes(input2, canary) {
     ...base,
     resolveBin: () => input2.bin,
     pluginRoot: () => input2.root,
-    userConfigDir: () => input2.home,
+    userConfigDir: () => input2.userConfigDir ?? input2.home,
     ...input2.realHome ? { realHome: () => input2.realHome } : {},
     sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] }, warnings: [] }),
     ...canary ? { loadSdk: async () => {
@@ -165267,6 +165359,7 @@ __export(copilot_smoke_exports, {
   DEFAULT_TIER1_TIMEOUT_MS: () => DEFAULT_TIER1_TIMEOUT_MS,
   DELEGATE_AGENT: () => DELEGATE_AGENT2,
   DELEGATE_SMOKE_PROMPT: () => DELEGATE_SMOKE_PROMPT,
+  KEPT_HOME_LOGIN_NOTE: () => KEPT_HOME_LOGIN_NOTE,
   KNOWN_SCENARIOS: () => KNOWN_SCENARIOS,
   LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL: () => LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL,
   LIVE_RUN_REFUSED_DETAIL: () => LIVE_RUN_REFUSED_DETAIL,
@@ -165284,12 +165377,14 @@ __export(copilot_smoke_exports, {
   evaluateTier1: () => evaluateTier1,
   extractJsonArray: () => extractJsonArray,
   isStrippedEnvKey: () => isStrippedEnvKey,
+  keptHomeLoginNote: () => keptHomeLoginNote,
   liveRunRefusal: () => liveRunRefusal,
   loginIdentity: () => loginIdentity,
   resolveDefaultPluginRoot: () => resolveDefaultPluginRoot,
   resolvePackageRoot: () => resolvePackageRoot,
   runCopilotSmoke: () => runCopilotSmoke,
-  sessionSandboxFlags: () => sessionSandboxFlags
+  sessionSandboxFlags: () => sessionSandboxFlags,
+  tier2StoredLogin: () => tier2StoredLogin
 });
 function sessionSandboxFlags(delegate) {
   return [
@@ -165856,6 +165951,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   const base = run3 ? cassetteEnv(ctx.env, run3, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env2 = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env2.OMC_GIT_GUARDRAILS = "1";
+  const storedLogin = tier2StoredLogin(ctx.env, ctx.deps.userConfigDir, run3?.mode);
   (0, import_fs200.writeFileSync)((0, import_path229.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
@@ -165863,39 +165959,55 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     agentFiles = (0, import_fs200.readdirSync)((0, import_path229.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
-  const result = await runSdkTier({
-    root: ctx.root,
-    bin,
-    binVersion,
-    packageVersion,
-    home,
-    projectDir,
-    remoteDir,
-    env: env2,
-    scenarios,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
-    maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
-    keepHome: !!opts.keepHome,
-    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
-    loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
-    spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path229.join)(ctx.root, "skills"), "SKILL.md"),
-    agentFiles,
-    mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: ctx.deps.runChain ?? runChainScenario,
-    runTeam: ctx.deps.runTeam ?? runTeamScenario,
-    runCli: ctx.deps.runCli ?? runCliScenario,
-    runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
-    runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-    ...run3 ? { cassette: run3 } : {}
-  });
+  let result;
+  try {
+    result = await runSdkTier({
+      root: ctx.root,
+      bin,
+      binVersion,
+      packageVersion,
+      home,
+      projectDir,
+      remoteDir,
+      env: env2,
+      scenarios,
+      model: opts.model,
+      timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+      maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
+      keepHome: !!opts.keepHome,
+      loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
+      loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+      spawnSync: ctx.spawnSyncFn,
+      skillDirs: countDirsWith((0, import_path229.join)(ctx.root, "skills"), "SKILL.md"),
+      agentFiles,
+      mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
+      runChain: ctx.deps.runChain ?? runChainScenario,
+      runTeam: ctx.deps.runTeam ?? runTeamScenario,
+      runCli: ctx.deps.runCli ?? runCliScenario,
+      runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+      runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+      ...run3 ? { cassette: run3 } : {},
+      ...storedLogin ? { storedLogin } : {}
+    });
+  } finally {
+    if (keptHomeLoginNote(!!opts.keepHome, !!storedLogin, result)) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
+  }
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path229.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process55, import_crypto61, import_fs200, import_os42, import_path229, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+function keptHomeLoginNote(keepHome, storedLogin, result) {
+  return keepHome && storedLogin && (result === void 0 || !!result.storedLoginUsed);
+}
+function tier2StoredLogin(env2, configDir, mode, deny2 = addRecordingDenyLiterals, platform = process.platform) {
+  if (mode === "replay") return void 0;
+  const login3 = smokeStoredLogin(env2, configDir ?? getCopilotConfigDir(), platform);
+  if (login3) deny2([login3.token]);
+  return login3;
+}
+var import_child_process55, import_crypto61, import_fs200, import_os42, import_path229, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, KEPT_HOME_LOGIN_NOTE;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
@@ -165935,6 +166047,7 @@ var init_copilot_smoke = __esm({
     TIER0_COPILOT_IDS = ["copilot.binary", "copilot.plugin_list", "copilot.skill_list"];
     LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
     LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli/runFactory/runSandbox or set OMC_LIVE_SMOKE=2";
+    KEPT_HOME_LOGIN_NOTE = "omg smoke: the sessions may have used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:";
   }
 });
 
@@ -195626,6 +195739,8 @@ function tail4(text9, lines4 = 30) {
   return text9.trim().split(/\r?\n/).slice(-lines4);
 }
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
+var RELEASE_JOB = "Create GitHub Release";
+var RECOVERY_WORKFLOW = ".github/workflows/release.yml";
 var RERUN_START_POLLS = 40;
 var LAND_ROUNDS = 500;
 var SUITE_HEARTBEAT_MS = 5 * 6e4;
@@ -196751,12 +196866,77 @@ ${r.stderr}`;
     if (!pushed?.annotated || pushed.commit !== sha3) fail9(`origin's ${tag} does not peel to ${sha3.slice(0, 12)} after the push`);
     return { status: "ok", note: `${tag} pushed on ${sha3.slice(0, 12)}` };
   }
+  /**
+   * Evidence that Release Recovery succeeded for `tag` on `sha`: an artifact named npm-release-boundary-recovery-<tag>
+   * (uploaded only after the recovery's verify-registry passed) whose producing run is a completed, successful
+   * workflow_dispatch run of release.yml in this repository, titled "Release Recovery <tag> <sha>" (its run-name, which
+   * binds the dispatched inputs; the run itself fails unless the tag peels to that sha), and origin's tag still peels
+   * to `sha`. A workflow_dispatch run uses the workflow file of the ref it was dispatched on, so the run's head_sha
+   * (that definition) must be on origin/main: a branch with an edited release.yml proves nothing. A head_sha missing
+   * locally after the fetch of origin/main is not on main. An expired artifact still counts: only the run's metadata
+   * is read, never the artifact's files. A run that has not completed yet is found by `pendingRecoveryRun` instead
+   * (it has no artifact until mid-run).
+   */
+  recoveryEvidence(tag, sha3) {
+    const name = `npm-release-boundary-recovery-${tag}`;
+    const listed2 = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/artifacts?name=${encodeURIComponent(name)}&per_page=100`]) || "{}");
+    const artifacts = (listed2.artifacts ?? []).filter((a) => a.name === name && typeof a.workflow_run?.id === "number").sort((a, b) => b.id - a.id);
+    if (artifacts.length === 0) return { problem: `no Release Recovery evidence: no artifact ${name} in this repository` };
+    const fetched = this.run("git", ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
+    if (fetched.status !== 0) {
+      return { problem: `cannot check the Release Recovery workflow definition: git fetch origin +refs/heads/main:refs/remotes/origin/main failed (exit ${fetched.status}): ${tail4(fetched.stderr, 1).join(" ")}` };
+    }
+    const shallow = this.run("git", ["rev-parse", "--is-shallow-repository"]).stdout.trim() === "true" ? "; shallow clone: cannot check the workflow definition against main" : "";
+    const definitionOnMain = (head) => !!head && FULL_SHA3.test(head) && this.run("git", ["cat-file", "-e", `${head}^{commit}`]).status === 0 && this.isAncestor(head, "refs/remotes/origin/main");
+    const rejected = [];
+    for (const artifact of artifacts) {
+      const runId = artifact.workflow_run.id;
+      const r = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/runs/${runId}`]) || "{}");
+      const unfinished = r.status !== "completed";
+      const why = [
+        (r.path ?? "").split("@")[0] !== RECOVERY_WORKFLOW && `path ${r.path ?? "(none)"}`,
+        r.event !== "workflow_dispatch" && `event ${r.event ?? "(none)"}`,
+        (unfinished || r.conclusion !== "success") && `${r.status ?? "(no status)"}/${r.conclusion ?? "(no conclusion)"}`,
+        (!r.repository?.full_name || r.head_repository?.full_name !== r.repository.full_name) && "run from another repository",
+        r.display_title !== `Release Recovery ${tag} ${sha3}` && `title "${r.display_title ?? ""}" is not "Release Recovery ${tag} ${sha3}"`,
+        !definitionOnMain(r.head_sha) && `workflow definition ${(r.head_sha ?? "(none)").slice(0, 12)} (${r.head_branch ?? "no branch"}) is not on main${shallow}`
+      ].filter(Boolean);
+      if (why.length > 0) {
+        rejected.push(`run ${runId}: ${why.join(", ")}`);
+        continue;
+      }
+      const remote = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+      if (!remote?.annotated || remote.commit !== sha3) return { problem: `${tag} on origin does not peel to the main merge ${sha3.slice(0, 12)}` };
+      return { note: `Release Recovery run ${runId}${artifact.expired ? ", artifact expired" : ""}` };
+    }
+    const more = (listed2.total_count ?? 0) > (listed2.artifacts?.length ?? 0) ? ` (${listed2.total_count} artifacts, first ${listed2.artifacts?.length ?? 0} read)` : "";
+    return { problem: `no successful Release Recovery run for ${tag} ${sha3.slice(0, 12)}: artifact ${name} came from ${rejected.join("; ")}${more}`, rejected };
+  }
+  /**
+   * A Release Recovery run for `tag` on `sha` that is still queued or running blocks verify as a wait (pending under
+   * --drive), artifact or not. Only a run dispatched from main counts (no other run can become evidence). Only a wait,
+   * never evidence; an unreadable list is no wait.
+   */
+  waitForPendingRecovery(tag, sha3) {
+    const listed2 = this.run("gh", ["run", "list", "--workflow", "release.yml", "--event", "workflow_dispatch", "--json", "databaseId,status,displayTitle,headBranch", "--limit", "20"]);
+    if (listed2.status !== 0) return;
+    let runs = [];
+    try {
+      runs = JSON.parse(listed2.stdout || "[]");
+    } catch {
+      return;
+    }
+    const unfinished = ["queued", "in_progress", "pending", "waiting", "requested"];
+    const r = runs.find((x) => x.headBranch === "main" && unfinished.includes(x.status ?? "") && x.displayTitle === `Release Recovery ${tag} ${sha3}`);
+    if (r) pendingWait(`Release Recovery run ${r.databaseId} for ${tag} is still ${r.status ?? "(no status)"}: wait for run ${r.databaseId} to finish, then re-run omg release ${this.v} --from verify`);
+  }
   async verify() {
     const v = this.v;
     const tag = `v${v}`;
     const sha3 = this.state.mainMergeSha;
     if (!sha3 || !FULL_SHA3.test(sha3)) fail9("no main merge commit recorded; run the promote phase first");
     let run3;
+    let recovered = "";
     for (; ; ) {
       const runs = JSON.parse(this.must("gh", ["run", "list", "--workflow", "ci.yml", "--event", "push", "--commit", sha3, "--json", "databaseId,headBranch,headSha,event,status,conclusion", "--limit", "50"]) || "[]");
       run3 = runs.filter((r) => r.headBranch === tag && r.headSha === sha3 && (r.event ?? "push") === "push").sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -196777,15 +196957,33 @@ ${r.stderr}`;
               return false;
             }
           })();
+          if (published && failedJobs2.length > 0 && failedJobs2.every((j) => j.name === RELEASE_JOB)) {
+            const evidence = this.recoveryEvidence(tag, sha3);
+            if (evidence.problem) {
+              this.waitForPendingRecovery(tag, sha3);
+              fail9(`tag run ${run3.databaseId} ${run3.conclusion} in ${RELEASE_JOB} and GitHub Release ${tag} exists, but ${evidence.problem}`, [
+                `only a successful Release Recovery run (gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}), titled "Release Recovery ${tag} ${sha3}" and run from a workflow definition on main, proves the registry check passed; a GitHub Release created by hand does not`,
+                ...(evidence.rejected ?? []).map((r) => `rejected Release Recovery ${r}`),
+                `Release Recovery runs from before this rule (no tag and sha in the run title, only "Release Recovery") cannot be used as evidence`,
+                `confirm by hand instead: the Release Recovery run's log shows verify-registry passed, and npm view ${this.pkgName}@${v} dist.attestations lists the provenance; verify then stays unrecorded for ${tag} (no destructive step)`,
+                `if no Release Recovery run exists for ${tag}, dispatch one (gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}): it fails at "Assert GitHub Release is absent" by design, after its "Verify recovered package provenance" step (verify-registry), and that step's log is the one to check`,
+                ...details()
+              ]);
+            }
+            recovered = evidence.note;
+            break;
+          }
           if (published) {
             fail9(`tag run ${run3.databaseId} ${run3.conclusion}: failed job(s) ${names2}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
               `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
               ...details()
             ]);
           }
-          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+          this.waitForPendingRecovery(tag, sha3);
+          const recovery = `gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}`;
+          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}): ${recovery}; a release created by hand (gh release create) does not pass verify`,
             `then re-run omg release ${v} --from verify`,
             ...details()
           ]);
@@ -196816,8 +197014,9 @@ ${r.stderr}`;
     const relInfo = rel.status === 0 ? JSON.parse(rel.stdout) : null;
     if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
     else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
-    if (problems.length > 0) fail9(`tag run ${runId} is green, but the release is incomplete`, problems);
-    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
+    if (problems.length > 0) fail9(`tag run ${runId} is ${recovered ? `${run3.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : "green"}, but the release is incomplete`, problems);
+    const how = recovered ? ` (tag run ${runId} ${run3.conclusion} in ${RELEASE_JOB}; completed by ${recovered})` : "";
+    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
   }
 };
 function resumePoint(state, from) {
@@ -196944,13 +197143,13 @@ async function runRelease(deps, requested) {
         outcome = await release.phase(id);
       } catch (error62) {
         if (error62 instanceof PendingError) {
-          if (ci) await stopCi(`the ${id} phase is pending`);
+          if (ci && !gateOpen) await stopCi(`the ${id} phase is pending`);
           return pendingResult(id, error62);
         }
         throw error62;
       }
       if (!record3(id, outcome)) {
-        if (ci) {
+        if (ci && !gateOpen) {
           record3("pr", await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
         }
         return { ok: false, version: v, dryRun: false, statePath, phases: results };

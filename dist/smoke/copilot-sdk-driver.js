@@ -22,7 +22,7 @@
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir, userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
@@ -33,6 +33,7 @@ import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETA
 import { hasExited, killProcessTree } from './process-utils.js';
 import { buildSessionEnv } from './copilot-session-env.js';
 import { childEnv } from '../utils/windows-search.js';
+import { scrubTokens } from '../copilot-run/sandbox.js';
 import { withCassette } from './replay/handler.js';
 import { cassetteEnv, finalizeRecording, hasCassette, keepFailedParts, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, storedRunOrder, } from './replay/run.js';
 /**
@@ -557,8 +558,62 @@ function isCliScenario(name) {
     return CLI_SCENARIOS.includes(name);
 }
 export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
+/**
+ * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
+ * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,
+ * and every scenario's events file (lanes, CLI and chain scenarios included), so neither the printed report, the
+ * `--json` report nor a `--keep-home` events file carries it, whatever a session or a shell tool echoed.
+ */
 export async function runSdkTier(input) {
+    const token = input.storedLogin?.token;
+    if (!token)
+        return runSdkTierUnscrubbed(input);
+    // As secretValues does: a value under 8 characters is no exact literal (it would rewrite ordinary text); the
+    // token-shape patterns still apply.
+    const scrub = (text) => scrubTokens(text, token.length >= 8 ? [token] : []);
     const events = {};
+    try {
+        const result = await runSdkTierUnscrubbed(input, events);
+        return {
+            ...result,
+            checks: result.checks.map((c) => ({ ...c, id: scrub(c.id), detail: scrub(c.detail), ...(c.evidence !== undefined ? { evidence: scrub(c.evidence) } : {}) })),
+            ...(result.skipped !== undefined ? { skipped: scrub(result.skipped) } : {}),
+        };
+    }
+    catch (err) {
+        throw new Error(scrub(errText(err)));
+    }
+    finally {
+        for (const path of Object.values(events)) {
+            if (!path)
+                continue;
+            let text;
+            try {
+                text = readFileSync(path, 'utf-8');
+            }
+            catch {
+                continue; /* not written */
+            }
+            const clean = scrub(text);
+            if (clean === text)
+                continue;
+            // Write beside, then rename over: a failed write never leaves a truncated events file. Best effort: a
+            // failure here never masks the tier's own result or error.
+            const tmp = `${path}.tmp`;
+            try {
+                writeFileSync(tmp, clean);
+                renameSync(tmp, path);
+            }
+            catch {
+                try {
+                    rmSync(tmp, { force: true });
+                }
+                catch { /* best effort */ }
+            }
+        }
+    }
+}
+async function runSdkTierUnscrubbed(input, events = {}) {
     let loaded;
     try {
         loaded = await input.loadSdk();
@@ -604,6 +659,7 @@ export async function runSdkTier(input) {
     let runOrder = [];
     let pid;
     let wedged = false;
+    let login;
     try {
         try {
             await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
@@ -618,12 +674,27 @@ export async function runSdkTier(input) {
             sdkInfo.runtimeVersion = typeof status.value.version === 'string' ? status.value.version : null;
             sdkInfo.protocolVersion = typeof status.value.protocolVersion === 'number' ? status.value.protocolVersion : null;
         }
-        const models = await rpc(() => client.listModels(), 'listModels()');
-        const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input.model);
+        const { models, login: attached } = await listModelIds(client, input, !!loaded.cassette);
+        // The stored login decision, made once before the first session: the static session, the scenario sessions and
+        // the lane scenarios' userConfigDir all follow it.
+        login = attached;
+        const sessionInput = { ...input };
+        if (login)
+            sessionInput.storedLogin = login;
+        else
+            delete sessionInput.storedLogin;
+        const choice = chooseModel(models.ok ? models.value : [], input.model);
         sdkInfo.model = choice.label;
         const modelLabel = `${choice.label} (${choice.note})`;
-        checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
-        checks.push(...await staticChecks(client, input, loaded, bin));
+        const runtime = evaluateSdkRuntime(status, input.binVersion, modelLabel);
+        // Auth hints (runSdkTier scrubs the token from them): a later "Not authenticated" with the login attached points
+        // at a stale stored entry; a login left out says what listModels() answered instead.
+        if (login)
+            runtime.detail += ' (stored login attached)';
+        else if (input.storedLogin && !models.ok)
+            runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+        checks.push(runtime);
+        checks.push(...await staticChecks(client, sessionInput, loaded, bin));
         let stopReason;
         // chain rewrites the shared sandbox (route table, a project skill): run it
         // last. team runs before it, so its worker sessions never meet that route
@@ -730,6 +801,7 @@ export async function runSdkTier(input) {
                                 env,
                                 projectDir: input.projectDir,
                                 home: input.home,
+                                ...(login ? { userConfigDir: login.userConfigDir } : {}),
                                 timeoutMs: input.timeoutMs,
                                 maxCredits: input.maxCredits,
                                 budget: input.maxCredits - total.credits,
@@ -746,13 +818,14 @@ export async function runSdkTier(input) {
                                     env,
                                     projectDir: input.projectDir,
                                     home: input.home,
+                                    ...(login ? { userConfigDir: login.userConfigDir } : {}),
                                     timeoutMs: input.timeoutMs,
                                     maxCredits: input.maxCredits,
                                     budget: input.maxCredits - total.credits,
                                     eventsPath: path,
                                     ...(choice.model ? { model: choice.model } : {}),
                                 })
-                                : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+                                : await runScenario(client, sessionInput, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
             entries.push({ name, run, start });
             const cost = runCost(run);
             total.premiumRequests += cost.premiumRequests;
@@ -820,7 +893,7 @@ export async function runSdkTier(input) {
                 : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run), runOrder }, ran.map((e) => e.name)));
         }
     }
-    return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}) };
+    return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}), ...(login ? { storedLoginUsed: true } : {}) };
 }
 /** Where a scenario's unwritten recording was kept, for a check's detail. */
 function keptAt(run, name) {
@@ -855,6 +928,7 @@ async function staticChecks(client, input, loaded, bin) {
                 workingDirectory: input.projectDir,
                 mcp: { disabledServers: ['github-mcp-server'] },
                 tools: { excludedTools: [hostSmokeToolName(input.mcpServer)] },
+                ...sessionLogin(input),
                 // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
                 ...(loaded.cassette && input.model ? { model: input.model } : {}),
             }), RPC_TIMEOUT_MS, 'createSession()');
@@ -1093,6 +1167,56 @@ async function currentToolMetadata(session) {
     }
     return meta;
 }
+/** The stored login's token for a session on this client (session RPC only); empty without one. */
+function sessionLogin(input) {
+    return input.storedLogin ? { github: { token: input.storedLogin.token } } : {};
+}
+/**
+ * The model ids for chooseModel, and the one decision whether this client's sessions get the stored login: only
+ * when the runtime itself is not signed in, i.e. its no-session listModels() answers "Not authenticated". A runtime
+ * signed in from an OS keyring or COPILOT_GITHUB_TOKEN keeps its own login, so a stale plaintext entry left from a
+ * keyring-less past never overrides it. With the login, the models come from a throwaway session (no tools, no
+ * plugin, no prompt) signed in with the token; a cassette client skips that session (its model.list is a miss too).
+ */
+export async function listModelIds(client, input, cassette) {
+    const server = await rpc(() => client.listModels(), 'listModels()');
+    if (server.ok)
+        return { models: { ok: true, value: server.value.map((m) => String(m.id)) } };
+    const login = input.storedLogin && /not authenticated/i.test(server.error) ? input.storedLogin : undefined;
+    if (!login || cassette)
+        return { models: server, ...(login ? { login } : {}) };
+    let session;
+    let pending;
+    try {
+        pending = client.createSession({
+            permissions: { onRequest: () => reject('omg smoke: the model list session grants nothing') },
+            plugins: { directories: [] },
+            workingDirectory: input.projectDir,
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: [], availableTools: [] },
+            ...sessionLogin({ storedLogin: login }),
+        });
+        session = await withTimeout(pending, RPC_TIMEOUT_MS, 'createSession()');
+        const model = session.rpc.model;
+        if (typeof model?.list !== 'function')
+            return { models: server, login };
+        const listed = await rpc(() => model.list(), 'session.model.list');
+        if (!listed.ok)
+            return { models: listed, login };
+        const list = Array.isArray(listed.value?.list) ? listed.value.list : [];
+        return { models: { ok: true, value: list.map((m) => (m && typeof m === 'object' ? m.id : undefined)).filter((id) => typeof id === 'string') }, login };
+    }
+    catch (err) {
+        // A createSession that timed out and resolves later is closed then; a late rejection is swallowed here.
+        if (!session && pending)
+            void pending.then((late) => closeSession(client, late, input.keepHome), () => undefined);
+        return { models: { ok: false, error: errText(err) }, login };
+    }
+    finally {
+        if (session)
+            await closeSession(client, session, input.keepHome);
+    }
+}
 async function closeSession(client, session, keepHome) {
     try {
         await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, 'disconnect()');
@@ -1154,6 +1278,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
             workingDirectory: input.projectDir,
             mcp: { disabledServers: ['github-mcp-server'] },
             tools: { excludedTools: scenarioExcludedTools(name, input.mcpServer) },
+            ...sessionLogin(input),
             ...(model ? { model } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         sent = true;

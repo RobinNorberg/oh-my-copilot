@@ -1,4 +1,6 @@
 name: Release Recovery
+# omg release verify reads this title to bind a successful recovery run to its dispatched tag and sha.
+run-name: Release Recovery ${{ inputs.tag }} ${{ inputs.sha }}
 
 on:
   workflow_dispatch:

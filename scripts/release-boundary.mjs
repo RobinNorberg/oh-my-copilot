@@ -21,6 +21,21 @@ const REGISTRY_URL_ENV = 'RELEASE_BOUNDARY_REGISTRY_URL';
 const FETCH_TIMEOUT_ENV = 'RELEASE_BOUNDARY_FETCH_TIMEOUT_MS';
 const DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+const PROPAGATION_BUDGET_ENV = 'RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS';
+const PROPAGATION_DELAY_ENV = 'RELEASE_BOUNDARY_PROPAGATION_DELAY_MS';
+const PROPAGATION_MAX_DELAY_ENV = 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS';
+const DEFAULT_PROPAGATION_BUDGET_MS = 600_000;
+const DEFAULT_PROPAGATION_DELAY_MS = 5_000;
+const DEFAULT_PROPAGATION_MAX_DELAY_MS = 60_000;
+// Floor of every wait between registry reads: no setting turns the propagation wait into a tight request loop.
+const MIN_PROPAGATION_DELAY_MS = 100;
+// Network failures worth waiting out (reset, timeout, abort, temporary DNS failure). Anything else (refused,
+// unknown host, TLS / certificate errors, a redirect under redirect: 'error') fails at once.
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
+  'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+const TRANSIENT_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 const SLSA_PREDICATE_TYPE = 'https://slsa.dev/provenance/v1';
 const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1';
@@ -704,38 +719,141 @@ function fetchTimeoutMs() {
   return Number(configured);
 }
 
-async function fetchBounded(url, options = {}) {
+/**
+ * `consume(response, rearm)` runs before the abort timer is cleared, so reading the body stays bounded: by the same
+ * timeout, or, when `consume` calls `rearm(capAt)` as data arrives, by a stall timer of that timeout that never runs
+ * past `capAt` (epoch ms).
+ */
+async function fetchBounded(url, options = {}, consume = undefined) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs());
+  const timeoutMs = fetchTimeoutMs();
+  let timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const rearm = (capAt) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => controller.abort(), Math.max(0, Math.min(timeoutMs, capAt - Date.now())));
+  };
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      redirect: 'error',
+      redirect: options.redirect ?? 'error',
       headers: {
         accept: 'application/json',
         ...(options.headers ?? {}),
       },
     });
+    return consume ? await consume(response, rearm) : response;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    fail(`network request failed for ${url}: ${detail}`);
+    throw new Error(`network request failed for ${url}: ${detail}`, { cause: error });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function fetchJsonRequired(url, label) {
-  const response = await fetchBounded(url);
-  if (response.status !== 200) {
-    fail(`${label} returned HTTP ${response.status}`);
+function integerEnv(name, fallback, min, max) {
+  const configured = process.env[name];
+  if (configured === undefined) return fallback;
+  if (!/^\d+$/.test(configured) || Number(configured) < min || Number(configured) > max) {
+    fail(`${name} must be an integer between ${min} and ${max}`);
   }
-  let text;
-  try {
-    text = await response.text();
-  } catch (error) {
-    fail(`cannot read ${label} response: ${error instanceof Error ? error.message : String(error)}`);
+  return Number(configured);
+}
+
+/** True when a fetchBounded failure (its cause chain) is a network error that can plausibly clear on its own. */
+function isTransientNetworkError(error) {
+  for (let current = error?.cause, depth = 0; current && depth < 5; current = current.cause, depth += 1) {
+    if (TRANSIENT_ERROR_NAMES.has(current.name) || TRANSIENT_NETWORK_CODES.has(current.code)) return true;
   }
+  return false;
+}
+
+// A fresh publish is visible in some registry reads before others (v5.31.0 and v5.33.0 saw the
+// version metadata while the tarball URL still returned 404), so verify-registry waits for
+// "not there yet" answers inside one shared budget. Content mismatches are never retried.
+function propagationWait({ packageName, version, tag, sha }) {
+  fetchTimeoutMs(); // validate the timeout setting up front so a bad value is not retried as a network error
+  const budgetMs = integerEnv(PROPAGATION_BUDGET_ENV, DEFAULT_PROPAGATION_BUDGET_MS, 0, 3_600_000);
+  const maxDelayMs = integerEnv(PROPAGATION_MAX_DELAY_ENV, DEFAULT_PROPAGATION_MAX_DELAY_MS, MIN_PROPAGATION_DELAY_MS, 600_000);
+  const initialDelayMs = Math.min(
+    integerEnv(PROPAGATION_DELAY_ENV, DEFAULT_PROPAGATION_DELAY_MS, MIN_PROPAGATION_DELAY_MS, 600_000),
+    maxDelayMs,
+  );
+  return {
+    deadline: Date.now() + budgetMs,
+    budgetMs,
+    initialDelayMs,
+    maxDelayMs,
+    exhausted(label, detail, attempts) {
+      fail(
+        `${label} ${detail} after ${attempts} attempt(s) over ${Math.round(this.budgetMs / 1000)}s; `
+        + `${packageName}@${version} IS published to the registry, it is only not fully visible yet: `
+        + `do not republish; recover the GitHub Release with the Release Recovery workflow (tag=${tag} sha=${sha})`,
+      );
+    },
+  };
+}
+
+/** "Not there yet" answers of a fresh publish: 404, request timeout, rate limit and server errors. */
+const isPropagationStatus = (status) => status === 404 || status === 408 || status === 429 || status >= 500;
+
+/**
+ * Reads `url` until it answers 200 and returns the complete body bytes. The body of a 200 is read chunk by chunk
+ * under a stall timer (the request timeout, restarted by every chunk), so a slow but moving body (the tarball is tens
+ * of MB) completes, while a stalled or reset body is a network error (waited out when transient) and never hangs. The
+ * read never runs past the propagation budget's end (at least one timeout after the headers). Any other answer's body
+ * is cancelled, never read. The caller checks the bytes.
+ */
+async function fetchUntilPresent(url, label, wait, options = {}) {
+  let delayMs = wait.initialDelayMs;
+  const readOrCancel = async (response, rearm) => {
+    if (response.status === 200) {
+      const capAt = Math.max(wait.deadline, Date.now() + fetchTimeoutMs());
+      const chunks = [];
+      const reader = response.body?.getReader();
+      try {
+        for (;;) {
+          rearm(capAt);
+          const chunk = reader ? await reader.read() : { done: true };
+          if (chunk.done) break;
+          chunks.push(chunk.value);
+        }
+      } catch (error) {
+        await reader?.cancel().catch(() => {});
+        throw error;
+      }
+      return { status: 200, bytes: Buffer.concat(chunks) };
+    }
+    await response.body?.cancel().catch(() => undefined);
+    return { status: response.status };
+  };
+  for (let attempt = 1; ; attempt += 1) {
+    let answer;
+    let detail;
+    try {
+      // A redirect comes back as its 3xx response and fails below at once, as redirect: 'error' did before.
+      answer = await fetchBounded(url, { ...options, redirect: 'manual' }, readOrCancel);
+    } catch (error) {
+      if (!isTransientNetworkError(error)) throw error;
+      detail = error instanceof Error ? error.message : String(error);
+    }
+    if (answer) {
+      if (answer.status === 200) return answer.bytes;
+      if (!isPropagationStatus(answer.status)) fail(`${label} returned HTTP ${answer.status}`);
+      detail = `returned HTTP ${answer.status}`;
+    }
+    if (Date.now() + delayMs >= wait.deadline) {
+      wait.exhausted(label, detail, attempt);
+    }
+    process.stderr.write(`release-boundary: ${label} ${detail}; waiting ${delayMs}ms for registry propagation (attempt ${attempt + 1})\n`);
+    await new Promise(resolveDelay => setTimeout(resolveDelay, delayMs));
+    delayMs = Math.min(delayMs * 2, wait.maxDelayMs);
+  }
+}
+
+async function fetchJsonRequired(url, label, wait) {
+  // TextDecoder strips a UTF-8 BOM and replaces invalid bytes, exactly as response.text() did.
+  const text = new TextDecoder().decode(await fetchUntilPresent(url, label, wait));
   const parsed = parseJson(text, `${label} response`);
   if (!isPlainObject(parsed) && !Array.isArray(parsed)) {
     fail(`${label} response must be JSON object or array`);
@@ -1027,10 +1145,11 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     registry: base,
   });
 
+  const wait = propagationWait({ packageName: expectedPackage, version: expectedVersion, tag: expectedTag, sha: expectedSha });
   const encodedPackage = encodePackageName(expectedPackage);
   const encodedVersion = encodeURIComponent(expectedVersion);
-  const metadata = await fetchJsonRequired(registryPath(base, `${encodedPackage}/${encodedVersion}`), 'registry version metadata');
-  const rootMetadata = await fetchJsonRequired(registryPath(base, encodedPackage), 'registry root metadata');
+  const metadata = await fetchJsonRequired(registryPath(base, `${encodedPackage}/${encodedVersion}`), 'registry version metadata', wait);
+  const rootMetadata = await fetchJsonRequired(registryPath(base, encodedPackage), 'registry root metadata', wait);
   const tarballUrl = validateRegistryMetadata(metadata, rootMetadata, {
     packageName: expectedPackage,
     version: expectedVersion,
@@ -1038,16 +1157,7 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     evidence,
     base,
   });
-  const tarballResponse = await fetchBounded(tarballUrl, { headers: { accept: 'application/octet-stream' } });
-  if (tarballResponse.status !== 200) {
-    fail(`registry tarball returned HTTP ${tarballResponse.status}`);
-  }
-  let registryTarball;
-  try {
-    registryTarball = Buffer.from(await tarballResponse.arrayBuffer());
-  } catch (error) {
-    fail(`cannot read registry tarball: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  const registryTarball = await fetchUntilPresent(tarballUrl, 'registry tarball', wait, { headers: { accept: 'application/octet-stream' } });
   const registryEvidence = buildEvidenceFromBytes(registryTarball, basename(new URL(tarballUrl).pathname));
   assertDigestEquality(registryEvidence.byteLength, evidence.byteLength, 'registry tarball byte length');
   assertDigestEquality(registryEvidence.sha512.hex, evidence.sha512.hex, 'registry tarball SHA-512');
@@ -1063,7 +1173,7 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
   });
 
   const attestationUrl = registryPath(base, `-/npm/v1/attestations/${encodedPackage}@${encodedVersion}`);
-  const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint');
+  const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint', wait);
   const registryAttestation = selectSlsaAttestation(attestationDocument);
   assertMatchingSlsaBundles(npmVerifiedAttestation, registryAttestation);
   const payload = decodeDssePayload(npmVerifiedAttestation);

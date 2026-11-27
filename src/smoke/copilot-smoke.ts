@@ -43,9 +43,9 @@ import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
 import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
 import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, NO_CASSETTE_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
-import { readCassetteConfig } from './replay/handler.js';
+import { addRecordingDenyLiterals, readCassetteConfig } from './replay/handler.js';
 import { cassetteEnv, recordTargetRefusal, replayModel, type CassetteRun } from './replay/run.js';
-import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
+import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot, smokeStoredLogin } from './copilot-session-env.js';
 
 export {
   buildSessionEnv,
@@ -888,39 +888,77 @@ async function runTier2(
   const base = run ? cassetteEnv(ctx.env, run, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
   env.OMC_GIT_GUARDRAILS = '1';
+  const storedLogin = tier2StoredLogin(ctx.env, ctx.deps.userConfigDir, run?.mode);
   writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
 
   let agentFiles: string[] = [];
   try { agentFiles = readdirSync(join(ctx.root, 'agents')).filter((f) => f.endsWith('.md')).sort(); } catch { /* evaluated as 0 */ }
-  const result = await runSdkTier({
-    root: ctx.root,
-    bin,
-    binVersion,
-    packageVersion,
-    home,
-    projectDir,
-    remoteDir,
-    env,
-    scenarios,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
-    maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
-    keepHome: !!opts.keepHome,
-    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
-    loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
-    spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
-    agentFiles,
-    mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
-    runChain: ctx.deps.runChain ?? runChainScenario,
-    runTeam: ctx.deps.runTeam ?? runTeamScenario,
-    runCli: ctx.deps.runCli ?? runCliScenario,
-    runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
-    runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-    ...(run ? { cassette: run } : {}),
-  });
+  let result: SdkTierResult | undefined;
+  try {
+    result = await runSdkTier({
+      root: ctx.root,
+      bin,
+      binVersion,
+      packageVersion,
+      home,
+      projectDir,
+      remoteDir,
+      env,
+      scenarios,
+      model: opts.model,
+      timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+      maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
+      keepHome: !!opts.keepHome,
+      loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
+      loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+      spawnSync: ctx.spawnSyncFn,
+      skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
+      agentFiles,
+      mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+      runChain: ctx.deps.runChain ?? runChainScenario,
+      runTeam: ctx.deps.runTeam ?? runTeamScenario,
+      runCli: ctx.deps.runCli ?? runCliScenario,
+      runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+      runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+      ...(run ? { cassette: run } : {}),
+      ...(storedLogin ? { storedLogin } : {}),
+    });
+  } finally {
+    // The tier scrubs the token from what the smoke writes (its events files); the runtime's own logs and session
+    // state under the kept home are not the smoke's to rewrite.
+    if (keptHomeLoginNote(!!opts.keepHome, !!storedLogin, result)) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
+  }
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
+}
+
+export const KEPT_HOME_LOGIN_NOTE = 'omg smoke: the sessions may have used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:';
+
+/**
+ * Whether runTier2 prints KEPT_HOME_LOGIN_NOTE: only with `--keep-home` and a stored login. A finished tier says
+ * whether it attached the login (storedLoginUsed); a thrown one (`result` undefined) may have, so it prints too.
+ */
+export function keptHomeLoginNote(keepHome: boolean, storedLogin: boolean, result: Pick<SdkTierResult, 'storedLoginUsed'> | undefined): boolean {
+  return keepHome && storedLogin && (result === undefined || !!result.storedLoginUsed);
+}
+
+/**
+ * The tier 2 stored login (smokeStoredLogin) of the real Copilot config dir (`configDir`, else
+ * getCopilotConfigDir()), and its token on the recording deny list (a cassette recording never carries it).
+ * None in replay, which stays credential-free.
+ */
+export function tier2StoredLogin(
+  env: NodeJS.ProcessEnv,
+  configDir: string | undefined,
+  mode: 'record' | 'replay' | undefined,
+  deny: (values: Iterable<string>) => void = addRecordingDenyLiterals,
+  platform: NodeJS.Platform = process.platform,
+): { userConfigDir: string; token: string } | undefined {
+  if (mode === 'replay') return undefined;
+  const login = smokeStoredLogin(env, configDir ?? getCopilotConfigDir(), platform);
+  if (login) deny([login.token]);
+  return login;
 }

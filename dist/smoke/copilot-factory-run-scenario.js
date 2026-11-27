@@ -227,7 +227,7 @@ export class RecordingLanes {
 }
 /** The real copilot_run backend on the smoke's binary, plugin and login. */
 export function copilotLanes(input) {
-    const deps = { ...defaultCopilotRunDeps(input.env), resolveBin: () => input.bin, pluginRoot: () => input.root, userConfigDir: () => input.home };
+    const deps = { ...defaultCopilotRunDeps(input.env), resolveBin: () => input.bin, pluginRoot: () => input.root, userConfigDir: () => input.userConfigDir ?? input.home };
     return new CopilotLaneBackend(new CopilotRunManager(deps), { allowLive: true });
 }
 /** Lane bounds: the 30-credit runtime minimum per lane, one fix round, no retry or respawn, so the lane count is fixed. */

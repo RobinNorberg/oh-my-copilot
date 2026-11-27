@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -697,6 +697,302 @@ describe('release-boundary.mjs', () => {
             ])).rejects.toThrow('--publish-log is not valid');
         }
         finally {
+            await server.close();
+        }
+    });
+    it('waits for registry propagation on 404/408/429/5xx but fails at once on other statuses and wrong bytes', async () => {
+        const root = makeTempRoot('release-boundary-propagation-');
+        const tarball = releaseTarball();
+        const localTarballPath = writeTarball(root, `${PACKAGE_NAME}-${VERSION}.tgz`, tarball);
+        const evidencePath = join(root, 'release-evidence.json');
+        const evidence = writeEvidence(localTarballPath, evidencePath);
+        let base = '';
+        // Status codes the next tarball requests answer with before the real bytes; 'always404' never serves them.
+        let tarballStatuses = [];
+        let always404 = false;
+        let servedTarball = tarball;
+        let tarballRequests = 0;
+        const attestation = slsaAttestation(dssePayload(evidence.sha512.hex));
+        // Per-path answers served before the real one: a status (3xx with a Location), a reset socket, a 404 whose body
+        // stalls, a 200 whose body is cut off by a reset ('cut'), stalls ('stall200') or trickles in slowly ('trickle200').
+        const failNext = {};
+        const stalled = [];
+        const requests = {};
+        const server = await startServer((request, response) => {
+            const path = request.url ?? '';
+            requests[path] = (requests[path] ?? 0) + 1;
+            const action = failNext[path]?.shift();
+            if (action === 'reset') {
+                request.socket.destroy();
+                return;
+            }
+            if (action === 'cut') {
+                response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(tarball.length) });
+                response.write(tarball.subarray(0, Math.floor(tarball.length / 2)), () => request.socket.destroy());
+                return;
+            }
+            if (action === 'stall200') {
+                response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(tarball.length) });
+                response.write(tarball.subarray(0, 1));
+                stalled.push(response);
+                return;
+            }
+            if (action === 'trickle200') {
+                // The real bytes in 6 chunks, 250 ms apart: about 1250 ms in all, longer than the 1000 ms request timeout, with
+                // 750 ms of margin per gap (the server shares the client's event loop, so a busy runner delays both).
+                response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(servedTarball.length) });
+                const size = Math.ceil(servedTarball.length / 6);
+                let offset = 0;
+                const next = () => {
+                    const end = Math.min(offset + size, servedTarball.length);
+                    response.write(servedTarball.subarray(offset, end));
+                    offset = end;
+                    if (offset < servedTarball.length)
+                        setTimeout(next, 250);
+                    else
+                        response.end();
+                };
+                next();
+                return;
+            }
+            if (action === 'stall') {
+                response.writeHead(404, { 'content-length': '1000' });
+                response.write('x');
+                stalled.push(response);
+                return;
+            }
+            if (action !== undefined) {
+                response.writeHead(action, action >= 300 && action < 400 ? { location: `${base}${path}` } : {});
+                response.end();
+                return;
+            }
+            if (request.url === `/${PACKAGE_NAME}/${VERSION}`) {
+                sendJson(response, 200, {
+                    name: PACKAGE_NAME,
+                    version: VERSION,
+                    gitHead: SHA,
+                    dist: {
+                        tarball: `${base}/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`,
+                        integrity: evidence.npmIntegrity,
+                        shasum: evidence.sha1,
+                        signatures: [{ keyid: 'fixture', sig: 'fixture' }],
+                    },
+                });
+                return;
+            }
+            if (request.url === `/${PACKAGE_NAME}`) {
+                sendJson(response, 200, { 'dist-tags': { latest: VERSION } });
+                return;
+            }
+            if (request.url === `/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`) {
+                tarballRequests += 1;
+                const status = always404 ? 404 : tarballStatuses.shift();
+                if (status !== undefined) {
+                    response.writeHead(status);
+                    response.end();
+                    return;
+                }
+                response.writeHead(200, { 'content-type': 'application/octet-stream' });
+                response.end(servedTarball);
+                return;
+            }
+            if (request.url === `/-/npm/v1/attestations/${PACKAGE_NAME}@${VERSION}`) {
+                sendJson(response, 200, { attestations: [attestation] });
+                return;
+            }
+            response.writeHead(404);
+            response.end();
+        });
+        base = server.base;
+        const auditPath = join(root, 'npm-audit-signatures.json');
+        writeFileSync(auditPath, JSON.stringify(auditReport(attestation, base)));
+        const options = {
+            packageName: PACKAGE_NAME,
+            version: VERSION,
+            tag: TAG,
+            sha: SHA,
+            evidencePath,
+            tarballPath: localTarballPath,
+            provenance: 'required',
+            auditPath,
+        };
+        const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        const reset = (statuses) => {
+            tarballStatuses = statuses;
+            tarballRequests = 0;
+            for (const key of Object.keys(requests))
+                delete requests[key];
+            stderr.mockClear();
+        };
+        const tarballPath = `/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`;
+        const metadataPath = `/${PACKAGE_NAME}/${VERSION}`;
+        const rootPath = `/${PACKAGE_NAME}`;
+        const attestationPath = `/-/npm/v1/attestations/${PACKAGE_NAME}@${VERSION}`;
+        try {
+            await withEnvironment({
+                RELEASE_BOUNDARY_REGISTRY_URL: base,
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+            }, async () => {
+                reset([404, 404]);
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(tarballRequests).toBe(3);
+                const waits = stderr.mock.calls.map(([line]) => String(line));
+                expect(waits).toHaveLength(2);
+                expect(waits[0]).toContain('registry tarball returned HTTP 404; waiting');
+                expect(waits[0]).toContain('(attempt 2)');
+                expect(waits[1]).toContain('(attempt 3)');
+                reset([503, 500]);
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(tarballRequests).toBe(3);
+                expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 503');
+                // Rate limiting and request timeouts are "not there yet" too.
+                reset([429, 408]);
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(tarballRequests).toBe(3);
+                expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 429; waiting');
+                expect(String(stderr.mock.calls[1]?.[0])).toContain('registry tarball returned HTTP 408; waiting');
+                // A 200 whose body is cut off by a reset is a transient network error, waited out like a reset before the headers.
+                reset([]);
+                failNext[tarballPath] = ['cut'];
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(requests[tarballPath]).toBe(2);
+                expect(String(stderr.mock.calls[0]?.[0])).toMatch(/^release-boundary: registry tarball network request failed for .*; waiting/);
+                reset([403]);
+                await expect(verifyRegistry(options)).rejects.toThrow(/^registry tarball returned HTTP 403$/);
+                expect(tarballRequests).toBe(1);
+                expect(stderr).not.toHaveBeenCalled();
+                reset([]);
+                servedTarball = releaseTarball(SHA, [], '# tampered bytes\n');
+                await expect(verifyRegistry(options)).rejects.toThrow(/registry tarball (byte length|SHA-512) mismatch/);
+                expect(tarballRequests).toBe(1);
+                expect(stderr).not.toHaveBeenCalled();
+                servedTarball = tarball;
+                // A redirect is not propagation: it fails at once, as before the wait existed.
+                reset([302]);
+                await expect(verifyRegistry(options)).rejects.toThrow(/^registry tarball returned HTTP 302$/);
+                expect(tarballRequests).toBe(1);
+                expect(stderr).not.toHaveBeenCalled();
+                // The version metadata, root metadata and attestation reads wait too, and so does a reset connection.
+                reset([]);
+                failNext[metadataPath] = [404];
+                failNext[rootPath] = [503];
+                failNext[attestationPath] = ['reset', 404];
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(requests).toMatchObject({ [metadataPath]: 2, [rootPath]: 2, [attestationPath]: 3, [tarballPath]: 1 });
+                const waited = stderr.mock.calls.map(([line]) => String(line));
+                expect(waited).toHaveLength(4);
+                expect(waited[0]).toContain('registry version metadata returned HTTP 404; waiting');
+                expect(waited[1]).toContain('registry root metadata returned HTTP 503; waiting');
+                expect(waited[2]).toMatch(/^release-boundary: attestation endpoint network request failed for .*; waiting/);
+                expect(waited[3]).toContain('attestation endpoint returned HTTP 404; waiting');
+                // A 404 whose body never arrives is cancelled, not read: the next attempt goes out at once.
+                reset([]);
+                failNext[tarballPath] = ['stall'];
+                const started = Date.now();
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(Date.now() - started).toBeLessThan(10_000);
+                expect(requests[tarballPath]).toBe(2);
+                expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 404; waiting');
+            });
+            // A 200 whose body stalls is read inside the request timeout: aborted, then waited out, never a hang.
+            await withEnvironment({
+                RELEASE_BOUNDARY_REGISTRY_URL: base,
+                RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '2000',
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+            }, async () => {
+                reset([]);
+                failNext[tarballPath] = ['stall200'];
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(requests[tarballPath]).toBeGreaterThanOrEqual(2);
+                expect(stderr.mock.calls.map(([line]) => String(line)).some((line) => /^release-boundary: registry tarball network request failed for .*; waiting/.test(line))).toBe(true);
+            });
+            // A 200 whose body keeps arriving for longer than the request timeout completes on the first attempt: the timer
+            // restarts with every chunk, it only aborts a body that stops.
+            await withEnvironment({
+                RELEASE_BOUNDARY_REGISTRY_URL: base,
+                RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '1000',
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+            }, async () => {
+                reset([]);
+                failNext[tarballPath] = ['trickle200'];
+                const started = Date.now();
+                await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+                expect(Date.now() - started).toBeGreaterThan(300);
+                expect(requests[tarballPath]).toBe(1);
+                expect(stderr).not.toHaveBeenCalled();
+            });
+            // Refused connections, unknown or unreachable hosts and TLS failures are not waited out: they fail at once.
+            // The connect errors are injected (as undici reports them: TypeError "fetch failed" with the code on its cause),
+            // so neither port reuse nor Windows' slow refusal of a closed local port can turn them into a timeout.
+            for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH']) {
+                const refused = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+                    throw new TypeError('fetch failed', { cause: Object.assign(new Error(`connect ${code}`), { code }) });
+                });
+                try {
+                    await withEnvironment({
+                        RELEASE_BOUNDARY_REGISTRY_URL: base,
+                        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                    }, async () => {
+                        reset([]);
+                        await expect(verifyRegistry(options)).rejects.toThrow(/^network request failed for .*: fetch failed$/);
+                        expect(refused).toHaveBeenCalledTimes(1);
+                        expect(stderr).not.toHaveBeenCalled();
+                    });
+                }
+                finally {
+                    refused.mockRestore();
+                }
+            }
+            // TLS against the live plain-HTTP fixture server fails in the handshake, at once.
+            const tlsRegistry = base.replace('http:', 'https:');
+            await withEnvironment({
+                RELEASE_BOUNDARY_REGISTRY_URL: tlsRegistry,
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+            }, async () => {
+                reset([]);
+                const registryAudit = join(root, 'npm-audit-signatures-other.json');
+                writeFileSync(registryAudit, JSON.stringify(auditReport(attestation, tlsRegistry)));
+                await expect(verifyRegistry({ ...options, auditPath: registryAudit })).rejects.toThrow(/^network request failed for /);
+                expect(stderr).not.toHaveBeenCalled();
+            });
+            // No setting turns the wait into a tight request loop.
+            for (const name of ['RELEASE_BOUNDARY_PROPAGATION_DELAY_MS', 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS']) {
+                await withEnvironment({ RELEASE_BOUNDARY_REGISTRY_URL: base, [name]: '0' }, async () => {
+                    await expect(verifyRegistry(options)).rejects.toThrow(`${name} must be an integer between 100 and 600000`);
+                });
+            }
+            await withEnvironment({
+                RELEASE_BOUNDARY_REGISTRY_URL: base,
+                // The budget's clock starts before the metadata reads; however long they take, the message counts the attempts.
+                RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '1500',
+                RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+                RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+            }, async () => {
+                reset([]);
+                always404 = true;
+                const failure = await verifyRegistry(options).then(() => undefined, (error) => error);
+                always404 = false;
+                expect(failure).toBeInstanceOf(Error);
+                expect(failure?.message).toContain('registry tarball returned HTTP 404 after');
+                expect(failure?.message).toContain(`${PACKAGE_NAME}@${VERSION} IS published`);
+                expect(failure?.message).toContain('do not republish');
+                expect(failure?.message).toContain(`Release Recovery workflow (tag=${TAG} sha=${SHA})`);
+                expect(failure?.message).toContain(`registry tarball returned HTTP 404 after ${tarballRequests} attempt(s) over 2s`);
+                expect(tarballRequests).toBeGreaterThanOrEqual(1);
+            });
+        }
+        finally {
+            stderr.mockRestore();
+            for (const response of stalled)
+                response.destroy();
             await server.close();
         }
     });
