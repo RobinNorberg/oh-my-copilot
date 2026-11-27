@@ -560,8 +560,8 @@ function isCliScenario(name) {
 export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
 /** Every scenario's checks when the runtime listed no models (sdk.runtime says why). */
 export const NO_MODELS_SKIP_DETAIL = 'skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent';
-/** Every scenario's checks when the runtime is not signed in and no credential was found to attach (sdk.runtime says why). */
-export const SIGNED_OUT_SKIP_DETAIL = 'skipped: not run, the runtime is not signed in and no credential was found to attach (see sdk.runtime); no credits spent';
+/** Every scenario's checks when the runtime is not signed in and the smoke had nothing to attach (sdk.runtime says why). */
+export const SIGNED_OUT_SKIP_DETAIL = 'skipped: not run, the runtime is not signed in and the smoke had nothing to attach (see sdk.runtime); no credits spent';
 const TOKEN_HINT = 'Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token '
     + 'owned by the user account, with the account permission "Copilot Requests"';
 /** What a stopped tier did not do: with no scenario requested (`--sdk-static`) only the credits are worth saying. */
@@ -571,17 +571,27 @@ const nothingRun = (scenarios) => (scenarios ? 'No scenario was run and no credi
  * `scenarios`: whether any scenario was requested.
  */
 export function noModelsDetail(source, scenarios = true) {
-    return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source}). `
+    return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source.text}). `
         + `${nothingRun(scenarios)}. ${TOKEN_HINT}`;
 }
 /**
  * sdk.runtime's addition when listModels() answered "Not authenticated" and the smoke had no credential to attach
  * (no stored login token, no token var the runtime does not read itself). Every scenario's runtime, lane, team host
- * and `copilot -p` process starts from the same env and login identity, so none could sign in either.
+ * and `copilot -p` process starts from the same env and login identity, so none could sign in either. A credential
+ * the runtime read itself (a token var, its own stored login) is the one to check; only with none is the advice to add one.
  */
 export function signedOutDetail(source, scenarios = true) {
-    return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source}). `
-        + `${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+    const { held } = source;
+    if (!held) {
+        return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source.text}). `
+            + `${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+    }
+    const lead = held.kind === 'token' ? held.name : 'its own stored login';
+    const advice = held.kind === 'token'
+        ? `Check ${held.name}: it must be a valid fine-grained personal access token owned by the user account, with the account permission "Copilot Requests"`
+        : 'Sign in again with `copilot login`';
+    return `the runtime answered "Not authenticated" with ${lead} and the smoke had no other credential to attach (credential: ${source.text}). `
+        + `${nothingRun(scenarios)}. ${advice}.`;
 }
 /**
  * Which credential the runtime had, by env var NAME only (never a value): the token attached to the sessions (an env
@@ -592,19 +602,20 @@ export function signedOutDetail(source, scenarios = true) {
 export function credentialSource(env, attached, identity, platform) {
     if (attached) {
         return attached.envVar
-            ? `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)`
-            : 'stored login attached (the runtime itself was not signed in)';
+            ? { text: `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)`, held: { kind: 'token', name: attached.envVar } }
+            : { text: 'stored login attached (the runtime itself was not signed in)', held: { kind: 'login' } };
     }
     // The runtime reads these in any letter case on Windows only (smokeStoredLogin).
     const raw = (name) => env[(platform === 'win32' ? Object.keys(env).find((k) => k.toUpperCase() === name) : undefined) ?? name];
     const set = (name) => (raw(name)?.trim() ?? '') !== '';
     const named = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].find(set);
+    // Only COPILOT_GITHUB_TOKEN can reach "overrides": with a login identity buildSessionEnv drops GH_TOKEN/GITHUB_TOKEN (LOGIN_SHADOWING_TOKENS).
     if (named)
-        return identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`;
+        return { text: identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`, held: { kind: 'token', name: named } };
     const empty = raw('COPILOT_GITHUB_TOKEN') !== undefined ? '; COPILOT_GITHUB_TOKEN is set but empty' : '';
     if (identity)
-        return `stored login (the runtime's own; no token env var with a value)${empty}`;
-    return `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty}`;
+        return { text: `stored login (the runtime's own; no token env var with a value)${empty}`, held: { kind: 'login' } };
+    return { text: `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty}` };
 }
 /**
  * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)

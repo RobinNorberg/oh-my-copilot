@@ -910,8 +910,11 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     });
 
     it('without a stored login (Windows, an OS keyring, COPILOT_GITHUB_TOKEN): no session token and no model list session', async () => {
-      const { loaded, rec } = fakeSdk({ serverNotAuthenticated: true });
+      // Signed in, so the smoke scenario's session really starts (signed out with nothing to attach stops before it).
+      const { loaded, rec } = fakeSdk({});
       const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
+      expect(rec.sessions.length).toBeGreaterThan(1);
+      expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(true);
       expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
       expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
       expect(result.sdk?.model).toBe('auto');
@@ -1215,7 +1218,7 @@ describe('runSdkTier when the runtime lists no models (signed out or not entitle
     const { result, checks } = r;
     expect(checks['sdk.runtime'].ok).toBe(false);
     expect(checks['sdk.runtime'].detail).toContain('runtime 1.0.116, protocol 4');
-    expect(checks['sdk.runtime'].detail).toContain(noModelsDetail('no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)'));
+    expect(checks['sdk.runtime'].detail).toContain(noModelsDetail({ text: 'no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)' }));
     expect(checks['sdk.runtime'].detail).toContain('No scenario was run and no credits were spent');
     noneRan(r);
     const scn = result.checks.filter((c) => c.id.startsWith('scn.'));
@@ -1270,7 +1273,7 @@ describe('runSdkTier when the runtime lists no models (signed out or not entitle
     const r = await run({ serverNotAuthenticated: true });
     const { result, checks } = r;
     expect(checks['sdk.runtime'].ok).toBe(false);
-    expect(checks['sdk.runtime'].detail).toContain(signedOutDetail('no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)'));
+    expect(checks['sdk.runtime'].detail).toContain(signedOutDetail({ text: 'no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)' }));
     expect(checks['sdk.runtime'].detail).toContain('the runtime answered "Not authenticated" and no credential was found to attach');
     expect(checks['sdk.runtime'].detail).toContain('No scenario was run and no credits were spent');
     expect(checks['sdk.runtime'].detail).not.toContain('listed no models');
@@ -1346,12 +1349,46 @@ describe('runSdkTier when the runtime lists no models (signed out or not entitle
   });
 
   it('credentialSource reads the token vars in any letter case on win32 only, and names an attached env var by its spelling', () => {
-    expect(credentialSource({ copilot_github_token: 'x' }, undefined, true, 'win32')).toBe('COPILOT_GITHUB_TOKEN is set and overrides the stored login');
-    expect(credentialSource({ copilot_github_token: 'x' }, undefined, false, 'win32')).toBe('COPILOT_GITHUB_TOKEN is set; there is no stored login');
-    expect(credentialSource({ copilot_github_token: 'x' }, undefined, false, 'linux')).toMatch(/^no credential found/);
-    expect(credentialSource({ GITHUB_TOKEN: '  ' }, undefined, true, 'linux')).toBe("stored login (the runtime's own; no token env var with a value)");
-    expect(credentialSource({ Copilot_GitHub_Token: 'x' }, { envVar: 'Copilot_GitHub_Token' }, true, 'darwin')).toBe('Copilot_GitHub_Token attached over the session RPC (the runtime does not read that spelling itself and was not signed in)');
-    expect(credentialSource({}, {}, true, 'linux')).toBe('stored login attached (the runtime itself was not signed in)');
+    expect(credentialSource({ copilot_github_token: 'x' }, undefined, true, 'win32').text).toBe('COPILOT_GITHUB_TOKEN is set and overrides the stored login');
+    expect(credentialSource({ copilot_github_token: 'x' }, undefined, false, 'win32').text).toBe('COPILOT_GITHUB_TOKEN is set; there is no stored login');
+    expect(credentialSource({ copilot_github_token: 'x' }, undefined, false, 'linux').text).toMatch(/^no credential found/);
+    expect(credentialSource({ GITHUB_TOKEN: '  ' }, undefined, true, 'linux').text).toBe("stored login (the runtime's own; no token env var with a value)");
+    expect(credentialSource({ Copilot_GitHub_Token: 'x' }, { envVar: 'Copilot_GitHub_Token' }, true, 'darwin').text).toBe('Copilot_GitHub_Token attached over the session RPC (the runtime does not read that spelling itself and was not signed in)');
+    expect(credentialSource({}, {}, true, 'linux').text).toBe('stored login attached (the runtime itself was not signed in)');
+    // `held`: the credential in play, decided with the text (never parsed from it).
+    expect(credentialSource({ GH_TOKEN: 'x' }, undefined, false, 'linux').held).toEqual({ kind: 'token', name: 'GH_TOKEN' });
+    expect(credentialSource({ COPILOT_GITHUB_TOKEN: '' }, undefined, true, 'linux').held).toEqual({ kind: 'login' });
+    expect(credentialSource({ COPILOT_GITHUB_TOKEN: '' }, undefined, false, 'linux').held).toBeUndefined();
+    expect(credentialSource({}, { envVar: 'copilot_github_token' }, false, 'linux').held).toEqual({ kind: 'token', name: 'copilot_github_token' });
+  });
+
+  it('signed out with a credential the runtime read itself: says so and advises checking it, not exporting it', async () => {
+    const VALUE = 'test-credential-value-0044';
+    const advice = (name: string) => `Check ${name}: it must be a valid fine-grained personal access token owned by the user account, with the account permission "Copilot Requests".`;
+    for (const name of ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN']) {
+      const r = await run({ serverNotAuthenticated: true }, { env: { ...input(null).env, [name]: VALUE } });
+      const detail = r.checks['sdk.runtime'].detail;
+      expect(r.checks['sdk.runtime'].ok).toBe(false);
+      expect(detail).toContain(`the runtime answered "Not authenticated" with ${name} and the smoke had no other credential to attach (credential: ${name} is set; there is no stored login). `);
+      expect(detail).toContain(advice(name));
+      expect(detail).not.toContain('no credential was found to attach');
+      expect(detail).not.toContain('export COPILOT_GITHUB_TOKEN');
+      expect(r.result.checks.filter((c) => c.id.startsWith('scn.')).every((c) => c.detail === SIGNED_OUT_SKIP_DETAIL)).toBe(true);
+      noneRan(r);
+      expect(JSON.stringify(r.result)).not.toContain(VALUE);
+    }
+
+    identity();
+    const overrides = await run({ serverNotAuthenticated: true }, { env: { ...input(null).env, COPILOT_GITHUB_TOKEN: VALUE } });
+    expect(overrides.checks['sdk.runtime'].detail).toContain('the runtime answered "Not authenticated" with COPILOT_GITHUB_TOKEN and the smoke had no other credential to attach (credential: COPILOT_GITHUB_TOKEN is set and overrides the stored login). ');
+    expect(overrides.checks['sdk.runtime'].detail).toContain(advice('COPILOT_GITHUB_TOKEN'));
+    expect(JSON.stringify(overrides.result)).not.toContain(VALUE);
+
+    const own = await run({ serverNotAuthenticated: true });
+    expect(own.checks['sdk.runtime'].detail).toContain('the runtime answered "Not authenticated" with its own stored login and the smoke had no other credential to attach '
+      + "(credential: stored login (the runtime's own; no token env var with a value)). No scenario was run and no credits were spent. Sign in again with `copilot login`.");
+    expect(own.checks['sdk.runtime'].detail).not.toContain('export COPILOT_GITHUB_TOKEN');
+    noneRan(own);
   });
 });
 

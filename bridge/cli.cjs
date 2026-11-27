@@ -63210,22 +63210,28 @@ function isCliScenario(name) {
   return CLI_SCENARIOS.includes(name);
 }
 function noModelsDetail(source2, scenarios = true) {
-  return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source2}). ${nothingRun(scenarios)}. ${TOKEN_HINT}`;
+  return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source2.text}). ${nothingRun(scenarios)}. ${TOKEN_HINT}`;
 }
 function signedOutDetail(source2, scenarios = true) {
-  return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source2}). ${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+  const { held } = source2;
+  if (!held) {
+    return `the runtime answered "Not authenticated" and no credential was found to attach (credential: ${source2.text}). ${nothingRun(scenarios)}. Sign in with \`copilot login\`, or export COPILOT_GITHUB_TOKEN. ${TOKEN_HINT}`;
+  }
+  const lead = held.kind === "token" ? held.name : "its own stored login";
+  const advice2 = held.kind === "token" ? `Check ${held.name}: it must be a valid fine-grained personal access token owned by the user account, with the account permission "Copilot Requests"` : "Sign in again with `copilot login`";
+  return `the runtime answered "Not authenticated" with ${lead} and the smoke had no other credential to attach (credential: ${source2.text}). ${nothingRun(scenarios)}. ${advice2}.`;
 }
 function credentialSource(env2, attached, identity, platform) {
   if (attached) {
-    return attached.envVar ? `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)` : "stored login attached (the runtime itself was not signed in)";
+    return attached.envVar ? { text: `${attached.envVar} attached over the session RPC (the runtime does not read that spelling itself and was not signed in)`, held: { kind: "token", name: attached.envVar } } : { text: "stored login attached (the runtime itself was not signed in)", held: { kind: "login" } };
   }
   const raw = (name) => env2[(platform === "win32" ? Object.keys(env2).find((k) => k.toUpperCase() === name) : void 0) ?? name];
   const set2 = (name) => (raw(name)?.trim() ?? "") !== "";
   const named = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].find(set2);
-  if (named) return identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`;
+  if (named) return { text: identity ? `${named} is set and overrides the stored login` : `${named} is set; there is no stored login`, held: { kind: "token", name: named } };
   const empty3 = raw("COPILOT_GITHUB_TOKEN") !== void 0 ? "; COPILOT_GITHUB_TOKEN is set but empty" : "";
-  if (identity) return `stored login (the runtime's own; no token env var with a value)${empty3}`;
-  return `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty3}`;
+  if (identity) return { text: `stored login (the runtime's own; no token env var with a value)${empty3}`, held: { kind: "login" } };
+  return { text: `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty3}` };
 }
 async function runSdkTier(input2) {
   const token = input2.storedLogin?.token;
@@ -63906,7 +63912,7 @@ var init_copilot_sdk_driver = __esm({
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
     NO_MODELS_SKIP_DETAIL = "skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent";
-    SIGNED_OUT_SKIP_DETAIL = "skipped: not run, the runtime is not signed in and no credential was found to attach (see sdk.runtime); no credits spent";
+    SIGNED_OUT_SKIP_DETAIL = "skipped: not run, the runtime is not signed in and the smoke had nothing to attach (see sdk.runtime); no credits spent";
     TOKEN_HINT = 'Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token owned by the user account, with the account permission "Copilot Requests"';
     nothingRun = (scenarios) => scenarios ? "No scenario was run and no credits were spent" : "No credits were spent";
   }
