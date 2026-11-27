@@ -31,7 +31,7 @@ import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SA
 import { excerpt } from './copilot-session-eval.js';
 import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, KNOWN_SCENARIOS, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_INSTALL_COMMAND, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { hasExited, killProcessTree } from './process-utils.js';
-import { buildSessionEnv } from './copilot-session-env.js';
+import { buildSessionEnv, loginIdentity } from './copilot-session-env.js';
 import { childEnv } from '../utils/windows-search.js';
 import { scrubTokens } from '../copilot-run/sandbox.js';
 import { withCassette } from './replay/handler.js';
@@ -558,6 +558,33 @@ function isCliScenario(name) {
     return CLI_SCENARIOS.includes(name);
 }
 export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
+/** Every scenario's checks when the runtime listed no models (sdk.runtime says why). */
+export const NO_MODELS_SKIP_DETAIL = 'skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent';
+/** sdk.runtime's addition when the runtime listed no models; `source` names the credential, never a value. */
+export function noModelsDetail(source) {
+    return `the runtime listed no models: it is not signed in, or its credential is not entitled to Copilot models (credential: ${source}). `
+        + 'No scenario was run and no credits were spent. Hint: an exported COPILOT_GITHUB_TOKEN must be a fine-grained personal access token '
+        + 'owned by the user account, with the account permission "Copilot Requests"';
+}
+/**
+ * Which credential the runtime had, by env var NAME only (never a value): the stored login attached to the sessions,
+ * a token var in the runtime env (precedence as `copilot help environment`: COPILOT_GITHUB_TOKEN, GH_TOKEN,
+ * GITHUB_TOKEN, each over stored credentials), the runtime's own stored login (the copied login identity), or none.
+ */
+export function credentialSource(env, attached, identity, platform) {
+    // The runtime reads these in any letter case on Windows only (smokeStoredLogin).
+    const raw = (name) => env[(platform === 'win32' ? Object.keys(env).find((k) => k.toUpperCase() === name) : undefined) ?? name];
+    const set = (name) => (raw(name)?.trim() ?? '') !== '';
+    if (attached)
+        return 'stored login attached (the runtime itself was not signed in)';
+    const named = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].find(set);
+    if (named)
+        return `${named} is set and overrides the stored login`;
+    const empty = raw('COPILOT_GITHUB_TOKEN') !== undefined ? '; COPILOT_GITHUB_TOKEN is set but empty' : '';
+    if (identity)
+        return `stored login (the runtime's own; no token env var with a value)${empty}`;
+    return `no credential found (no COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN with a value, no stored login)${empty}`;
+}
 /**
  * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
  * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,
@@ -693,9 +720,16 @@ async function runSdkTierUnscrubbed(input, events = {}) {
             runtime.detail += ' (stored login attached)';
         else if (input.storedLogin && !models.ok)
             runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+        // An empty list after the sign-in handling: the runtime cannot serve a model, so no scenario starts. Not for a
+        // cassette client, whose model list is a miss by design (replay is credential-free; the model is pinned).
+        const noModels = !loaded.cassette && models.ok && models.value.length === 0;
+        if (noModels) {
+            runtime.ok = false;
+            runtime.detail += `; ${noModelsDetail(credentialSource(input.env, !!login, loginIdentity(input.home).loggedInUsers !== undefined, input.platform ?? process.platform))}`;
+        }
         checks.push(runtime);
         checks.push(...await staticChecks(client, sessionInput, loaded, bin));
-        let stopReason;
+        let stopReason = noModels ? NO_MODELS_SKIP_DETAIL : undefined;
         // chain rewrites the shared sandbox (route table, a project skill): run it
         // last. team runs before it, so its worker sessions never meet that route
         // table, and its copied worker logs fall in its own time slice.

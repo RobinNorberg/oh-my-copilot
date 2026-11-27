@@ -394,6 +394,16 @@ export declare function scenarioPlaceholderDirs(input: Pick<SdkTierInput, 'root'
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
+/** Every scenario's checks when the runtime listed no models (sdk.runtime says why). */
+export declare const NO_MODELS_SKIP_DETAIL = "skipped: not run, the runtime listed no models (see sdk.runtime); no credits spent";
+/** sdk.runtime's addition when the runtime listed no models; `source` names the credential, never a value. */
+export declare function noModelsDetail(source: string): string;
+/**
+ * Which credential the runtime had, by env var NAME only (never a value): the stored login attached to the sessions,
+ * a token var in the runtime env (precedence as `copilot help environment`: COPILOT_GITHUB_TOKEN, GH_TOKEN,
+ * GITHUB_TOKEN, each over stored credentials), the runtime's own stored login (the copied login identity), or none.
+ */
+export declare function credentialSource(env: NodeJS.ProcessEnv, attached: boolean, identity: boolean, platform: NodeJS.Platform): string;
 /**
  * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
  * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,

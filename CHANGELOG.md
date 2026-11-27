@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **`omg smoke copilot --tier 2` no longer runs scenarios when the runtime lists no models.** An empty model list means the runtime is not signed in or its credential is not entitled to Copilot models; the scenarios then could only time out (the `team` scenario waited its full 300 s). Now `sdk.runtime` fails with a message that names the credential source (names only, never a value) and says that no scenario was run and no credits were spent, each scenario's checks are reported as not run, and the exit code is `1`. Cassette record and replay runs are unchanged.
+
 # oh-my-copilot v5.33.1
 
 ## [5.33.1] - 2026-11-27
